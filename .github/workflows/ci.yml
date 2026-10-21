@@ -104,9 +104,9 @@ concurrency:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   IOS_SCREENSHOT_FASTLANE_VERSION: "2.240.1"
-  IOS_SCREENSHOT_NODE_VERSION: "24.16.0"
+  IOS_SCREENSHOT_NODE_VERSION: "24.22.1"
   IOS_SCREENSHOT_XCODE_VERSION: "Xcode 27.0 Build version 27A266a"
-  NODE_VERSION: "24.21.0"
+  NODE_VERSION: "24.22.1"
 
 jobs:
   preflight:
@@ -4402,7 +4402,7 @@ jobs:
         with:
           semantic-checks: "true"
           cache-mode: *cache_mode
-          node-version: "24.16.0"
+          node-version: "24.22.1"
           install-bun: "false"
           build-all-cache-scope: full
 
@@ -5724,7 +5724,7 @@ jobs:
     timeout-minutes: 60
     env:
       # Node 24.20 fixes Windows scheduler shutdown (nodejs/node#61999).
-      NODE_VERSION: "24.21.0"
+      NODE_VERSION: "24.22.1"
       NODE_OPTIONS: --max-old-space-size=8192
       OPENCLAW_TEST_SKIP_FULL_EXTENSIONS_SHARD: 1
     defaults:

@@ -768,7 +768,7 @@ describe("openclaw launcher", () => {
       } else {
         expect(result.status, version).toBe(1);
         expect(result.stderr, version).toContain(
-          `openclaw: Node ${version}: openclaw requires Node >=24.16.0 <25, or >=26.1.0.`,
+          `openclaw: Node ${version}: openclaw requires Node >=24.22.1 <25, or >=26.12.1.`,
         );
       }
     }

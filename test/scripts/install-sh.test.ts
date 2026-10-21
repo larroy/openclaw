@@ -753,7 +753,7 @@ NODE
       apk() {
         printf 'apk:%s\\n' "$*"
         if [[ "$*" == *"nodejs-current"* ]]; then
-          NODE_FAKE_VERSION=v24.16.0
+          NODE_FAKE_VERSION=v24.22.1
         fi
       }
       node() {
@@ -2390,11 +2390,11 @@ EOF
   it.each([
     { os: "linux", active: "v26.8.2", managed: "v24.14.1", location: "env", expected: "system" },
     { os: "macos", active: "v26.8.2", managed: "v24.14.1", location: "home", expected: "system" },
-    { os: "linux", active: "v20.20.0", managed: "v24.16.0", location: "env", expected: "managed" },
-    { os: "macos", active: "v20.20.0", managed: "v24.16.0", location: "home", expected: "managed" },
+    { os: "linux", active: "v20.20.0", managed: "v24.22.1", location: "env", expected: "managed" },
+    { os: "macos", active: "v20.20.0", managed: "v24.22.1", location: "home", expected: "managed" },
     { os: "linux", active: "v20.20.0", managed: "v24.14.1", location: "env", expected: "refuse" },
     { os: "macos", active: "v20.20.0", managed: "v24.14.1", location: "home", expected: "refuse" },
-    { os: "linux", active: "v20.20.0", managed: "v24.16.0", location: "hook", expected: "refuse" },
+    { os: "linux", active: "v20.20.0", managed: "v24.22.1", location: "hook", expected: "refuse" },
     {
       os: "linux",
       active: "v20.20.0",
@@ -2441,7 +2441,7 @@ EOF
     {
       os: "linux",
       active: "v20.20.0",
-      managed: "v24.16.0",
+      managed: "v24.22.1",
       location: "env",
       expected: "refuse",
       unsafeSqlite: true,
@@ -2629,7 +2629,7 @@ EOF
     const staleNode = join(staleBin, "node");
     const supportedNode = join(supportedBin, "node");
     writeFileSync(staleNode, "#!/bin/sh\necho v20.20.0\n");
-    writeFileSync(supportedNode, "#!/bin/sh\necho v24.16.0\n");
+    writeFileSync(supportedNode, "#!/bin/sh\necho v24.22.1\n");
     chmodSync(staleNode, 0o755);
     chmodSync(supportedNode, 0o755);
 
@@ -2670,14 +2670,14 @@ EOF
     expect(output).toContain("promote=0");
     expect(output).toContain("active=0");
     expect(output).toContain(`path=${supportedNode}`);
-    expect(output).toContain("version=v24.16.0");
+    expect(output).toContain("version=v24.22.1");
   });
 
   it("mirrors the canonical support policy for Node release labels", () => {
     const pkg = JSON.parse(readFileSync("package.json", "utf8")) as {
       engines?: { node?: string };
     };
-    expect(pkg.engines?.node).toBe(">=24.16.0 <25 || >=26.1.0");
+    expect(pkg.engines?.node).toBe(">=24.22.1 <25 || >=26.12.1");
 
     const tmp = mkdtempSync(join(tmpdir(), "openclaw-install-node-floor-"));
     const bin = join(tmp, "bin");
@@ -2883,7 +2883,7 @@ EOF
       [
         "#!/usr/bin/env bash",
         'if [[ "${1:-}" == "-p" ]]; then echo "24 15"; exit 0; fi',
-        'if [[ "${1:-}" == "-v" ]]; then echo "v24.16.0"; exit 0; fi',
+        'if [[ "${1:-}" == "-v" ]]; then echo "v24.22.1"; exit 0; fi',
         "",
       ].join("\n"),
     );

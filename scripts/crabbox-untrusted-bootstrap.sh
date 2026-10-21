@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-node_version="24.21.0"
+node_version="24.22.1"
 pnpm_spec="pnpm@12.5.1+sha512.e3f305bc784a2bc89f5ad3b6138889470fae8d2af5f36b61216ec91c2c3d64089775f9de38aac331044ea40f245cb0d5666392dfdf65824e1907ef6a2c62de5f"
 # Keep exact formerly trusted pins so older contributor heads remain verifiable.
 historical_pnpm_specs=(
