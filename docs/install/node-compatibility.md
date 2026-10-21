@@ -16,7 +16,7 @@ This reference covers supported Node.js lines, why the minimum versions exist, a
 | Node 24 | Supported   | `>=24.22.1 <25` | LTS line used by CI and the Linux installer.              |
 | Node 25 | Unsupported | —               | Excluded by the current TEXT decoder floor.               |
 | Node 23 | Unsupported | —               | Excluded earlier for incompatible `node:sqlite` behavior. |
-| Node 22 | Unsupported | —               | Unsupported since the 24.16.0/26.1.0 floor.               |
+| Node 22 | Unsupported | —               | Unsupported since the 24.22.1/26.12.1 floor.              |
 
 The exact engines expression is `>=24.22.1 <25 || >=26.12.1`. It remains the documented support policy and the `package.json` engine range used by package managers.
 
@@ -41,7 +41,7 @@ the updater rechecks prefix and service ownership before installation; follow th
 
 The **SQLite WAL-reset corruption bug** requires a safe loaded library: SQLite **3.51.3+**, **3.50.7+ within 3.50.x**, or **3.44.6+ within 3.44.x**. OpenClaw validates the library actually loaded because Node builds linked to shared system SQLite can use a different version from Node's own metadata.
 
-Separately, the **`node:sqlite` TEXT decoder** in Node 22.23.x, 24.15.0, 25.9.0, and 26.0.0 silently truncates values at embedded NUL characters. The first fixed releases are Node 24.16.0 and 26.1.0; a WAL-safe SQLite library does not fix this decoder. Node 23 was excluded earlier for incompatible `node:sqlite` behavior.
+Separately, the **`node:sqlite` TEXT decoder** in Node 22.23.x, 24.15.0, 25.9.0, and 26.0.0 silently truncates values at embedded NUL characters. The first fixed releases are Node 24.22.1 and 26.12.1; a WAL-safe SQLite library does not fix this decoder. Node 23 was excluded earlier for incompatible `node:sqlite` behavior.
 
 ## V8 compiler settings
 
@@ -86,7 +86,7 @@ Rows identify the first effective release, including a beta when applicable. Rec
 | Release                              | Node requirement                                 | What changed and why                                                                                                                                                                                                                                                                                     |
 | ------------------------------------ | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Unreleased (main)                    | `>=24.22.1 <25 \|\| >=26.12.1`                   | Requires the eMudhra compromised-key rejection releases, including for builds whose SQLite capability check passes. Replaces decoder version-only admission with an in-memory NUL round-trip check while preserving diagnostics/update recovery and SQLite safety checks. Node 22/23/25 remain excluded. |
-| v2026.9.3                            | `>=24.16.0 <25 \|\| >=26.1.0`                    | Raises the Node 24 floor and drops Node 22 and 25 to prevent embedded-NUL TEXT truncation; Node 23 remains excluded. Official Node-based support for macOS 11–13.4 and Linux ARMv7 provisioning ends. #140672                                                                                            |
+| v2026.9.3                            | `>=24.22.1 <25 \|\| >=26.12.1`                   | Raises the Node 24 floor and drops Node 22 and 25 to prevent embedded-NUL TEXT truncation; Node 23 remains excluded. Official Node-based support for macOS 11–13.4 and Linux ARMv7 provisioning ends. #140672                                                                                            |
 | v2026.8.2                            | `>=22.22.3 <23 \|\| >=24.15.0 <25 \|\| >=25.9.0` | Preserves supported RPM-owned Node packages with unsafe system SQLite and provisions a separate user-space runtime. The numeric range and loaded-library safety requirement stay unchanged. #134166                                                                                                      |
 | v2026.8.1                            | `>=22.22.3 <23 \|\| >=24.15.0 <25 \|\| >=25.9.0` | Rootless defaults advance to 24.19.0, or 22.23.2 on ARMv7. Linux package provisioning returns to Node 24 LTS to avoid prerelease repository builds. #130369                                                                                                                                              |
 | v2026.8.1-beta.3; stable v2026.8.1   | `>=22.22.3 <23 \|\| >=24.15.0 <25 \|\| >=25.9.0` | Centralizes release classification in `node-version.mjs`, rejecting prerelease, nightly, and malformed version labels. #124812                                                                                                                                                                           |

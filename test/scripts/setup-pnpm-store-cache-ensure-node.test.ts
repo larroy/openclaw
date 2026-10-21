@@ -258,11 +258,11 @@ exit 1
 
   it("enforces patched Node 24 and 26 wildcard minimums", () => {
     expect(runVersionMatch("24.14.1", "24.x").status).toBe(1);
-    expect(runVersionMatch("24.16.0", "24.x").status).toBe(1);
+    expect(runVersionMatch("24.22.1", "24.x").status).toBe(1);
     expect(runVersionMatch("24.22.0", "24.x").status).toBe(1);
     expect(runVersionMatch("24.22.1", "24.x").status).toBe(0);
     expect(runVersionMatch("26.0.0", "26.x").status).toBe(1);
-    expect(runVersionMatch("26.1.0", "26.x").status).toBe(1);
+    expect(runVersionMatch("26.12.1", "26.x").status).toBe(1);
     expect(runVersionMatch("26.12.0", "26.x").status).toBe(1);
     expect(runVersionMatch("26.12.1", "26.x").status).toBe(0);
   });

@@ -1117,10 +1117,10 @@ printf 'status=%s\\n' "$status"
   });
 
   it("rejects non-root smoke Node runtimes without node:sqlite", () => {
-    const result = runNonrootNodePreflight("24.16.0", { sqlite: false });
+    const result = runNonrootNodePreflight("24.22.1", { sqlite: false });
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("unsupported node 24.16.0: missing node:sqlite");
+    expect(result.stderr).toContain("unsupported node 24.22.1: missing node:sqlite");
   });
 
   it("rejects non-root smoke Node runtimes with vulnerable system SQLite", () => {
