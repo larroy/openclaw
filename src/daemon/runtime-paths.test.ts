@@ -162,7 +162,7 @@ it("treats an unparseable Node version as a probe failure", async () => {
 describe("resolvePreferredNodePath", () => {
   it.each([
     ["24.22.1", false, "unsupported"],
-    ["24.15.0+vendor.1", true, "supported"],
+    ["24.22.1+vendor.1", true, "supported"],
   ] as const)(
     "probes the selected binary's decoder on Node %s",
     async (version, lossless, expected) => {

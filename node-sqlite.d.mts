@@ -12,4 +12,5 @@ export function nodeRuntimeFailure(
   version: string | null,
   probe: SqliteCapabilities,
 ): string | null;
+export function nodeRuntimeNote(version: string | null, probe: SqliteCapabilities): string | null;
 export const SQLITE_CAPABILITY_PROBE: string;

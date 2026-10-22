@@ -83,8 +83,8 @@ describe("runtime-guard", () => {
   it.each([
     ["24.22.1", true, true],
     ["24.22.1", false, false],
-    ["24.15.0+vendor.1", true, true],
-    ["24.15.0+vendor.1", false, false],
+    ["24.22.1+vendor.1", true, true],
+    ["24.22.1+vendor.1", false, false],
   ] as const)("gates Node %s with lossless SQLite %s", async (version, lossless, admitted) => {
     const runtime = { log: vi.fn(), error: vi.fn(), exit: vi.fn() };
     const details = {

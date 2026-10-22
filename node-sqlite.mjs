@@ -1,4 +1,4 @@
-import { isSupportedOpenClawNodeVersion, parseNodeReleaseVersion } from "./node-version.mjs";
+import { isSupportedOpenClawNodeVersion, SUPPORTED_NODE_VERSION_RANGE } from "./node-version.mjs";
 
 // Self-contained so a different runtime can execute exactly the same probe with -e.
 function probeSqlite(DatabaseSync) {
@@ -168,10 +168,9 @@ export function nodeRuntimeFailure(version, probe) {
   if (!probe.version || !isSqliteWalResetSafeVersion(probe.version)) {
     return `${label}: SQLite ${probe.version ?? "unknown"} is not WAL-reset-safe; use SQLite 3.51.3+, 3.50.7+, or 3.44.6+ on its patched release line.`;
   }
-  // Node 22/23 remain excluded until their separate compatibility work is complete.
-  const release = parseNodeReleaseVersion(version);
-  if (!release || release.major < 24) {
-    return `${label}: openclaw requires Node >=24.22.1 <25, or >=26.12.1.`;
+  // SQLite capabilities cannot establish that the TLS verifier rejects compromised keys.
+  if (!isSupportedOpenClawNodeVersion(version)) {
+    return `${label}: openclaw requires Node ${SUPPORTED_NODE_VERSION_RANGE.replace(" || ", ", or ")}.`;
   }
   return null;
 }

@@ -817,7 +817,7 @@ NODE
       "error:Alpine apk repositories did not provide Node.js with WAL-reset-safe SQLite",
     );
     expect(result.stdout).toContain(
-      "Use an official node:26-alpine container or a glibc-based host",
+      "Use an official node:26.12.1-alpine container or a glibc-based host",
     );
   });
 
@@ -830,7 +830,7 @@ NODE
       install_build_tools_linux() { return 0; }
       dnf() { printf 'unexpected-dnf:%s\n' "$*"; return 99; }
       node() {
-        if [[ "\${1:-}" == "-v" ]]; then printf 'v24.18.0\n'; return 0; fi
+        if [[ "\${1:-}" == "-v" ]]; then printf 'v24.22.1\n'; return 0; fi
         if [[ "\${1:-}" == "-e" ]]; then return 1; fi
         return 1
       }
@@ -856,16 +856,16 @@ NODE
       [
         "#!/usr/bin/env bash",
         'PREFIX="${OPENCLAW_PREFIX:?}"',
-        "node_dir() { printf '%s/tools/node-v24.19.0\\n' \"$PREFIX\"; }",
+        "node_dir() { printf '%s/tools/node-v24.22.1\\n' \"$PREFIX\"; }",
         "os_detect() { printf 'linux\\n'; }",
         "arch_detect() { printf 'x64\\n'; }",
         "install_node() {",
-        '  local dir="$PREFIX/tools/node-v24.19.0"',
+        '  local dir="$PREFIX/tools/node-v24.22.1"',
         '  local bin="$dir/bin"',
         '  mkdir -p "$bin"',
         "  cat > \"$bin/node\" <<'EOF'",
         "#!/usr/bin/env bash",
-        "if [[ \"${1:-}\" == '-v' ]]; then printf 'v24.19.0\\n'; exit 0; fi",
+        "if [[ \"${1:-}\" == '-v' ]]; then printf 'v24.22.1\\n'; exit 0; fi",
         "if [[ \"${1:-}\" == '-e' ]]; then exit 0; fi",
         "exit 1",
         "EOF",
@@ -2388,8 +2388,8 @@ EOF
   const nvmTempDirs = useAutoCleanupTempDirTracker(afterEach);
 
   it.each([
-    { os: "linux", active: "v26.8.2", managed: "v24.14.1", location: "env", expected: "system" },
-    { os: "macos", active: "v26.8.2", managed: "v24.14.1", location: "home", expected: "system" },
+    { os: "linux", active: "v26.12.1", managed: "v24.14.1", location: "env", expected: "system" },
+    { os: "macos", active: "v26.12.1", managed: "v24.14.1", location: "home", expected: "system" },
     { os: "linux", active: "v20.20.0", managed: "v24.22.1", location: "env", expected: "managed" },
     { os: "macos", active: "v20.20.0", managed: "v24.22.1", location: "home", expected: "managed" },
     { os: "linux", active: "v20.20.0", managed: "v24.14.1", location: "env", expected: "refuse" },
@@ -2491,7 +2491,7 @@ EOF
         case "$1" in
           use)
             version="${managed}"
-            if [ "\${3:-}" = 26 ]; then version=v26.8.2; fi
+            if [ "\${3:-}" = 26 ]; then version=v26.12.1; fi
             export PATH="$NVM_DIR/versions/node/$version/bin:$PATH"
             ;;
           version)
@@ -2499,7 +2499,7 @@ EOF
             case "$value" in
               'lts/*')
                 if [ -e "$NVM_DIR/remote-updated" ]; then echo N/A; else echo v24.14.1; fi ;;
-              26) echo v26.8.2 ;;
+              26) echo v26.12.1 ;;
               '') echo N/A ;;
               *) echo "$value" ;;
             esac
@@ -2509,9 +2509,9 @@ EOF
             touch "$NVM_DIR/remote-updated"
             ${installFails ? "return 42" : ""}
             if [ ! -e "$NVM_DIR/alias/default" ]; then printf '26\\n' > "$NVM_DIR/alias/default"; fi
-            mkdir -p "$NVM_DIR/versions/node/v26.8.2/bin"
-            printf '#!/bin/sh\\nif [ "$1" = "-v" ]; then echo v26.8.2; fi\\n' > "$NVM_DIR/versions/node/v26.8.2/bin/node"
-            chmod +x "$NVM_DIR/versions/node/v26.8.2/bin/node"
+            mkdir -p "$NVM_DIR/versions/node/v26.12.1/bin"
+            printf '#!/bin/sh\\nif [ "$1" = "-v" ]; then echo v26.12.1; fi\\n' > "$NVM_DIR/versions/node/v26.12.1/bin/node"
+            chmod +x "$NVM_DIR/versions/node/v26.12.1/bin/node"
             ;;
           *) return 1 ;;
         esac
@@ -2561,7 +2561,7 @@ EOF
       } else {
         const selectedBin =
           expected === "installed"
-            ? join(nvmDir, "versions/node/v26.8.2/bin")
+            ? join(nvmDir, "versions/node/v26.12.1/bin")
             : expected === "system"
               ? systemBin
               : nvmBin;
@@ -2750,12 +2750,12 @@ EOF
 
   it.each(
     [
-      { version: "24.19.0", defect: "none", expected: 0 },
-      { version: "24.19.0", defect: "text", expected: 1 },
+      { version: "24.22.1", defect: "none", expected: 0 },
+      { version: "24.22.1", defect: "text", expected: 1 },
       { version: "24.15.0+vendor.1", defect: "none", expected: 1 },
       { version: "26.0.0+vendor.1", defect: "none", expected: 1 },
-      { version: "24.19.0", defect: "blob", expected: 1 },
-      { version: "24.19.0", defect: "json", expected: 1 },
+      { version: "24.22.1", defect: "blob", expected: 1 },
+      { version: "24.22.1", defect: "json", expected: 1 },
       { version: "22.23.2", defect: "none", expected: 1 },
     ].flatMap(({ version, defect, expected }) =>
       ["install.sh", "install-cli.sh"].map((installer) => ({
@@ -3938,6 +3938,22 @@ describe("install.sh macOS Homebrew Node behavior", () => {
     );
     expect(result.stdout).not.toContain("brew:link");
     expect(result.stdout).not.toContain("ensure-called");
+  });
+
+  it("falls back to a managed runtime when Homebrew is below the security floor", () => {
+    const result = runInstallShell(`
+      set -euo pipefail
+      source "${SCRIPT_PATH}"
+      OS=macos
+      run_quiet_step() { return 0; }
+      brew() { return 0; }
+      ensure_macos_default_node_active() { return 1; }
+      install_node_with_user_prefix() { echo "managed-runtime-installed"; }
+      install_node
+    `);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("managed-runtime-installed");
   });
 
   it("does not print PATH advice when Homebrew node is missing at runtime", () => {
