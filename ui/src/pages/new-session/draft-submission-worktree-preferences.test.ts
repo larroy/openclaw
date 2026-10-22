@@ -72,6 +72,16 @@ it.each([
       .querySelector<HTMLButtonElement>('[data-chat-model-option="openai/gpt-5.6-sol"]')!
       .click();
     const rendered = renderControl(control, next.context);
+    const initialEffort = await waitForSolid(() => {
+      const picker = rendered.querySelector<HTMLDetailsElement>(
+        ".chat-controls__effort-picker[data-chat-native-picker]",
+      );
+      expect(picker).not.toBeNull();
+      return picker!;
+    });
+    if (!initialEffort.open) {
+      initialEffort.querySelector<HTMLElement>("summary")!.click();
+    }
     const thinking = await waitForSolid(() => {
       const input = rendered.querySelector<HTMLInputElement>('[data-chat-thinking-slider="true"]');
       expect(input).not.toBeNull();
