@@ -1,5 +1,5 @@
 {
   "startupJsGzipBytes": 315967,
-  "reason": "Retain the current main startup baseline after optional-dialog integration: matched builds measure 316392 B base and 315945 B candidate across 7 requests; the candidate is 22 B below the canonical 315967 B baseline, within 64 B build variance.",
+  "reason": "Retain the stricter startup baseline after merging c64eaf54: matched builds measure 316245 B base and 316279 B candidate across 7 requests, a 34 B delta within the 64 B variance allowance. Ratchet Chat/New caps from 1411650/913005 B with current main relative headroom.",
   "updatedAt": "2026-10-22"
 }
