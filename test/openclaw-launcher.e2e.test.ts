@@ -735,6 +735,8 @@ describe("openclaw launcher", () => {
     const admitted = new Set([
       "24.22.1",
       "26.12.1",
+      "v24.22.1+local.1",
+      " 24.22.1+vendor-1.sha ",
       "27.0.0",
       "v27.0.0-head",
       "27.0.0-nightly20261018f88a1d25e9",
