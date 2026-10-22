@@ -3076,6 +3076,22 @@ describe("install.sh macOS Homebrew Node behavior", () => {
     expect(result.stdout).not.toContain("ensure-called");
   });
 
+  it("falls back to a managed runtime when Homebrew is below the security floor", () => {
+    const result = runInstallShell(`
+      set -euo pipefail
+      source "${SCRIPT_PATH}"
+      OS=macos
+      run_quiet_step() { return 0; }
+      brew() { return 0; }
+      ensure_macos_default_node_active() { return 1; }
+      install_node_with_user_prefix() { echo "managed-runtime-installed"; }
+      install_node
+    `);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("managed-runtime-installed");
+  });
+
   it("does not print PATH advice when Homebrew node is missing at runtime", () => {
     const result = runInstallShell(`
       set -euo pipefail
