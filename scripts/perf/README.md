@@ -1035,6 +1035,14 @@ row patches and `--session-envelope-refs` to also negotiate
 `session-event-field-refs` (the latter requires row patches). Both are opt-in;
 the default client capabilities are unchanged. A suitable starting swarm for
 each 16-core half is `--clients 38 --runs 8 --rounds 5 --chunks 500`.
+For a mixed wire-format swarm, use `--mixed-session-capabilities` instead of
+those two flags. It requires `transcript-broadcast` or `memory-soak` and at least
+three clients, rotating legacy, row-delta, and row-delta-plus-field-reference
+capabilities by client index. This rotation is independent of `--exact-clients`;
+`--clients 30 --exact-clients 15` gives five exact and five roster viewers per
+capability cohort. The report records each cohort's capabilities, client count,
+and exact-client count in `sessionCapabilityCohorts`; mixed clients also decode
+session rows and fail the run if a row baseline is missing.
 Add `--exact-clients 1 --activity-summaries` to model one transcript subscriber
 and 37 roster viewers receiving Activity recap changes. `--exact-clients`
 defaults to all clients; a mixed audience negotiates optional roster message
@@ -1585,8 +1593,13 @@ requests to that capture.
 
 Each allocation profile includes collected objects and reports decimal
 `allocatedMbPerTurn`. Allocation soaks keep one continuous sampling window and
-report it as `wholeSoakAllocation` with `allocation-soak.heapprofile`. These long
-captures sample every 512 KiB on average to bound native sample records and the
+report it as `wholeSoakAllocation` with `allocation-soak.heapprofile`. They also
+report `deliveredSessionEvents`, counted in the controller from the
+allocation-start request through the allocation-stop acknowledgment, including
+idle gaps and the small profile-control edges. Use this denominator for
+workload-normalized allocation per delivery; summing the cohort samples omits
+deliveries during idle gaps. Long captures sample every 512 KiB on average to
+bound native sample records and the
 final JSON export; short allocation experiments retain their 32 KiB interval. V8 forces
 a major collection when a sampling profile is read or stopped, so the soak
 never reads the profile between cohorts and stops it only after recording the
@@ -2430,11 +2443,12 @@ equally configured comparisons.
 
 For session-projection comparisons from one installed checkout, add
 `--entry src/entry.ts --session-projection-source <directory>` to both arms.
-The directory must contain all four coherent owner files:
-`session-event-projection.ts`, `session-row-presentation.ts`,
-`session-sharing-read.ts`, and `session-utils-list.ts`. Put their original
+The directory must contain all eight coherent owner files:
+`server-broadcast.ts`, `server-broadcast-types.ts`, `server-connection-state.ts`,
+`session-ancestor-references.ts`, `session-event-projection.ts`,
+`session-row-presentation.ts`, `session-sharing-read.ts`, and `session-utils-list.ts`. Put their original
 revision's files in a baseline directory and use `--session-projection-source
-src/gateway` for the candidate. The preload reads all four before Gateway startup
+src/gateway` for the candidate. The preload reads all eight before Gateway startup
 and fails on a missing file; it substitutes raw TypeScript while retaining canonical
 module URLs, relative imports, and source line numbers. The report records the
 resolved `sessionProjectionSource`. It also loads the canonical broadcaster as

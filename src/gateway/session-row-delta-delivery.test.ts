@@ -28,24 +28,29 @@ it.each(["drop", "throw", "callback", "serialize"] as const)(
     const { broadcast } = createGatewayBroadcaster({
       clients: new GatewayClientRegistry(peers.map((peer) => peer.client)),
       onSessionDeliveryLost: (client) => peers.find((peer) => peer.client === client)?.rows.clear(),
-      prepareSessionEventProjection: () => (client) => {
-        const peer = peers.find((entry) => entry.client === client);
-        if (!peer) {
-          throw new Error("Unknown recipient");
-        }
-        const delivery = peer.rows.prepareRows([row], diff);
-        return {
-          payload: {
-            session: delivery.wire[0],
-            ...(brokenSerialization && peer === peers[0] ? { invalid: 1n } : {}),
-          },
-          delivered: delivery.delivered,
+      prepareSessionEventProjection: () => {
+        const prepare = ConnectionSessionRows.prepareRows([row], diff);
+        return (client) => {
+          const peer = peers.find((entry) => entry.client === client);
+          if (!peer) {
+            throw new Error("Unknown recipient");
+          }
+          const delivery = prepare(peer.rows);
+          return {
+            payload: {
+              session: delivery.wire[0],
+              ...(brokenSerialization && peer === peers[0] ? { invalid: 1n } : {}),
+            },
+            delivered: () => delivery.delivered(peer.rows),
+          };
         };
       },
     });
     try {
       broadcast("sessions.changed", {});
-      expect(peers[0]!.rows.prepareRows([row], diff).wire[0]).toHaveProperty("base");
+      expect(ConnectionSessionRows.prepareRows([row], diff)(peers[0]!.rows).wire[0]).toHaveProperty(
+        "base",
+      );
       if (failure === "drop") {
         peers[0]!.client.socket.bufferedAmount = MAX_BUFFERED_BYTES + 1;
       } else if (failure === "serialize") {
@@ -60,8 +65,12 @@ it.each(["drop", "throw", "callback", "serialize"] as const)(
         );
       }
       broadcast("sessions.changed", {}, { dropIfSlow: true });
-      expect(peers[0]!.rows.prepareRows([row], diff).wire[0]).toHaveProperty("full");
-      expect(peers[1]!.rows.prepareRows([row], diff).wire[0]).toHaveProperty("base");
+      expect(ConnectionSessionRows.prepareRows([row], diff)(peers[0]!.rows).wire[0]).toHaveProperty(
+        "full",
+      );
+      expect(ConnectionSessionRows.prepareRows([row], diff)(peers[1]!.rows).wire[0]).toHaveProperty(
+        "base",
+      );
     } finally {
       peers.forEach((peer) => peer.rows.clear());
       vi.restoreAllMocks();

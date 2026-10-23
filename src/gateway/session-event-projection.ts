@@ -10,9 +10,12 @@ import type { SessionRow } from "../../packages/gateway-protocol/src/schema/sess
 import { parseAgentSessionKey } from "../routing/session-key.js";
 import { getOrCreateWeakOwnerMap } from "../shared/weak-owner-map.js";
 import { readGatewayAccessRevision } from "./gateway-access-revision.js";
-import type { PrepareSessionEventProjection } from "./server-broadcast-types.js";
+import type {
+  PrepareSessionEventProjection,
+  SessionEventProjection,
+} from "./server-broadcast-types.js";
 import type { GatewayClient } from "./server-methods/client-types.js";
-import { prepareSessionAncestor } from "./session-ancestor-references.js";
+import { ConnectionSessionRows, prepareSessionAncestor } from "./session-ancestor-references.js";
 import { buildGatewaySessionSnapshot } from "./session-event-payload.js";
 import { createSessionRowDeltaDiffer } from "./session-row-delta-fields.js";
 import type { SessionRowReadView } from "./session-row-prepared-read.js";
@@ -107,28 +110,24 @@ export function prepareSessionEventProjection(
       string,
       {
         row: GatewaySessionRow;
-        ancestors: ReturnType<typeof prepareSessionAncestor>[] | undefined;
-        hiddenAncestors: string[];
-        payloads: Map<string | undefined, ProjectedPayload>;
+        ancestors: ReturnType<typeof ConnectionSessionRows.prepare> | undefined;
+        hiddenAncestors: ReturnType<typeof ConnectionSessionRows.forget>[];
+        payloads: Map<
+          object | undefined,
+          {
+            payload: ProjectedPayload;
+            rows: ReturnType<typeof ConnectionSessionRows.prepareRows>;
+            forgetRecapAncestors?: ReturnType<typeof ConnectionSessionRows.forget>[];
+          }
+        >;
       }
     >();
     const diff = createSessionRowDeltaDiffer();
-    const deltaPayloads = new WeakMap<object, Map<string, Record<string, unknown>>>();
+    const deltaPayloads = new WeakMap<object, Map<object, Record<string, unknown>>>();
     const fieldRefPayloads = new WeakMap<object, Record<string, unknown>>();
     const bodylessPayloads = new WeakMap<object, Record<string, unknown>>();
-    const baselineIds = new WeakMap<object, number>();
-    let nextBaselineId = 0;
-    const baselineId = (baseline: object | undefined) => {
-      if (!baseline) {
-        return 0;
-      }
-      let id = baselineIds.get(baseline);
-      if (id === undefined) {
-        id = ++nextBaselineId;
-        baselineIds.set(baseline, id);
-      }
-      return id;
-    };
+    const deliveries = new WeakMap<object, SessionEventProjection>();
+    const forgetCurrentRow = ConnectionSessionRows.forget(record.key);
     let revision = projection.state.revision;
     let accessRevision = readGatewayAccessRevision();
     // Run display facts belong to this synchronous publication; recipient authority stays live.
@@ -168,23 +167,26 @@ export function prepareSessionEventProjection(
               return presented ? [prepareSessionAncestor(presented)] : [];
             })
           : undefined;
-        audience = { row, ancestors: ancestorRows, hiddenAncestors, payloads: new Map() };
+        audience = {
+          row,
+          ancestors: ancestorRows && ConnectionSessionRows.prepare(ancestorRows, ancestorRevision),
+          hiddenAncestors: hiddenAncestors.map(ConnectionSessionRows.forget),
+          payloads: new Map(),
+        };
         audiences.set(audienceKey, audience);
       }
       const { row } = audience;
       const references = connection.references(client);
-      for (const key of audience.hiddenAncestors) {
-        references.forget(key);
+      for (const forget of audience.hiddenAncestors) {
+        forget(references);
       }
-      const ancestorDelivery =
-        audience.ancestors && references.prepare(audience.ancestors, ancestorRevision);
+      const ancestorDelivery = audience.ancestors?.(references);
       if (!ancestorDelivery) {
         connection.forgetConnectionAncestors(client);
       }
-      const deliveryKey = ancestorDelivery?.deliveryKey;
-      let projected = audience.payloads.get(deliveryKey);
-      if (!projected) {
-        projected = {
+      let preparedPayload = audience.payloads.get(ancestorDelivery);
+      if (!preparedPayload) {
+        const projected: ProjectedPayload = {
           ...base,
           session: row,
           fastMode: row.fastMode,
@@ -205,13 +207,27 @@ export function prepareSessionEventProjection(
         if (Object.hasOwn(projected, "childSessions")) {
           projected.childSessions = row.childSessions;
         }
-        audience.payloads.set(deliveryKey, projected);
+        preparedPayload = {
+          payload: projected,
+          rows: ConnectionSessionRows.prepareRows(
+            [row, ...(projected.ancestorSessions ?? [])],
+            diff,
+          ),
+          forgetRecapAncestors:
+            event === "sessions.changed" && source.reason === "activity-summary"
+              ? ancestorDelivery?.ancestorSessions.map((ancestor) =>
+                  ConnectionSessionRows.forget(ancestor.key),
+                )
+              : undefined,
+        };
+        audience.payloads.set(ancestorDelivery, preparedPayload);
       }
+      const projected = preparedPayload.payload;
       const rowDelivery = hasGatewayClientCap(
         client.connect.caps,
         GATEWAY_CLIENT_CAPS.SESSION_ROW_DELTAS,
       )
-        ? references.prepareRows([row, ...(projected.ancestorSessions ?? [])], diff)
+        ? preparedPayload.rows(references)
         : undefined;
       let wirePayload: Record<string, unknown> = projected;
       if (rowDelivery) {
@@ -243,9 +259,8 @@ export function prepareSessionEventProjection(
           }
           wirePayload = compact;
         }
-        const cacheKey = JSON.stringify([rowDelivery.key, rowDelivery.bases.map(baselineId)]);
         const cached = getOrCreateWeakOwnerMap(deltaPayloads, wirePayload);
-        let deltaPayload = cached.get(cacheKey);
+        let deltaPayload = cached.get(rowDelivery);
         if (!deltaPayload) {
           deltaPayload = {
             ...wirePayload,
@@ -254,7 +269,7 @@ export function prepareSessionEventProjection(
               ? { ancestorSessions: rowDelivery.wire.slice(1) }
               : {}),
           };
-          cached.set(cacheKey, deltaPayload);
+          cached.set(rowDelivery, deltaPayload);
         }
         wirePayload = deltaPayload;
       }
@@ -268,24 +283,31 @@ export function prepareSessionEventProjection(
         }
         wirePayload = bodyless;
       }
-      return {
+      let delivery = deliveries.get(wirePayload);
+      if (delivery) {
+        return delivery;
+      }
+      const { forgetRecapAncestors } = preparedPayload;
+      delivery = {
         payload: wirePayload,
-        serializeSession: () =>
-          rowDelivery ? JSON.stringify(rowDelivery.wire[0]) : serializeSessionRow(row),
+        serializeSession: rowDelivery?.serializeSession ?? (() => serializeSessionRow(row)),
         serializeMessage: omitMessage ? undefined : serializeMessage,
-        delivered: () => {
-          rowDelivery?.delivered();
-          references.forget(row.key);
-          if (event === "sessions.changed" && source.reason === "activity-summary") {
+        delivered: (targetClient) => {
+          const recipientRows = connection.references(targetClient);
+          rowDelivery?.delivered(recipientRows);
+          forgetCurrentRow(recipientRows);
+          if (forgetRecapAncestors) {
             // Rosters skip recaps, so a full recap row cannot certify a later reference.
-            for (const ancestor of ancestorDelivery?.ancestorSessions ?? []) {
-              references.forget(ancestor.key);
+            for (const forget of forgetRecapAncestors) {
+              forget(recipientRows);
             }
           } else {
-            ancestorDelivery?.delivered();
+            ancestorDelivery?.delivered(recipientRows);
           }
         },
       };
+      deliveries.set(wirePayload, delivery);
+      return delivery;
     };
   };
 }

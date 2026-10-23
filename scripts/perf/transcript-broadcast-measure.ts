@@ -124,6 +124,7 @@ const { values } = parseArgs({
     "session-census": { type: "boolean", default: false },
     "fingerprint-retention": { type: "boolean", default: false },
     "session-row-deltas": { type: "boolean", default: false },
+    "mixed-session-capabilities": { type: "boolean", default: false },
     "presence-deltas": { type: "boolean", default: false },
     "session-envelope-refs": { type: "boolean", default: false },
     "start-at": { type: "string" },
@@ -292,6 +293,30 @@ const exactClients = integer(
 if (exactClients > clientCount) {
   throw new Error("--exact-clients must not exceed --clients");
 }
+if (
+  values["mixed-session-capabilities"] &&
+  ((scenario !== "transcript-broadcast" && !soakScenario) ||
+    clientCount < 3 ||
+    values["session-row-deltas"] ||
+    values["session-envelope-refs"])
+) {
+  throw new Error(
+    "--mixed-session-capabilities requires transcript-broadcast or memory-soak with at least 3 clients; omit --session-row-deltas and --session-envelope-refs",
+  );
+}
+const sessionCapabilityCohorts = values["mixed-session-capabilities"]
+  ? [[], ["session-row-deltas"], ["session-row-deltas", "session-event-field-refs"]].map(
+      (caps) => ({ caps, clients: 0, exactClients: 0 }),
+    )
+  : undefined;
+const clientSessionCapabilities = Array.from({ length: clientCount }, (_, index) => {
+  const cohort = sessionCapabilityCohorts?.[index % sessionCapabilityCohorts.length];
+  if (cohort) {
+    cohort.clients++;
+    cohort.exactClients += Number(index < exactClients);
+  }
+  return cohort?.caps;
+});
 const runCount = scenario === "chat.send" ? 1 : integer(values.runs, "--runs");
 const sessionCount = idleScenario ? integer(values.sessions, "--sessions") : runCount;
 const historyBytesPerTurn = 16 * 1024;
@@ -1546,6 +1571,8 @@ const representativeFrames = new Map<string, FrameSizes>();
 let initialFullFrame: FrameSizes | undefined;
 const perClientCounters: Map<string, number>[] = [];
 let measuring = false;
+let capturingSoakAllocations = false;
+let wholeSoakSessionDeliveries = 0;
 let capturingColdSetup = values["dashboard-rpc"];
 const coldSetupRpc: Array<{
   phase: "setup/preflight";
@@ -2968,7 +2995,13 @@ async function connectClient(index: number) {
         previousSeq = event.seq;
       }
       const payload = isRecord(event.payload) ? event.payload : undefined;
-      if (values["activity-summaries"]) {
+      if (
+        capturingSoakAllocations &&
+        (event.event === "session.message" || event.event === "sessions.changed")
+      ) {
+        wholeSoakSessionDeliveries++;
+      }
+      if (values["activity-summaries"] || values["mixed-session-capabilities"]) {
         const decoded = rowEvents.project(event);
         if (decoded.missingBaseline) {
           subscriberFailure ??= new Error(`client ${index} lost its session row baseline`);
@@ -3052,7 +3085,14 @@ async function connectClient(index: number) {
   });
   clients[index] = client;
   await client.waitOpen();
-  const hello = await rpc(client, "connect", connectParams);
+  const sessionCaps = clientSessionCapabilities[index];
+  const hello = await rpc(
+    client,
+    "connect",
+    sessionCaps
+      ? { ...connectParams, caps: [...connectParams.caps, ...sessionCaps] }
+      : connectParams,
+  );
   const handshakeElapsedMs = performance.now() - started;
   if (
     !Value.Check(HelloOkSchema, hello) ||
@@ -3550,6 +3590,7 @@ try {
       ),
     );
   }
+  const warmupCompletedAtEpochMs = epochNow();
   console.log("PHASE warmed");
   if (startAt !== undefined) {
     if (Date.now() >= startAt) {
@@ -3575,6 +3616,7 @@ try {
   const soakSamplingIntervalBytes = heapSamplingIntervalBytes ?? 512 * 1024;
   if (soakAllocationPath) {
     // Reading or stopping a V8 sampling profile forces GC; keep one window for the entire soak.
+    capturingSoakAllocations = true;
     await controlGatewayProfile(gateway, "heap", "start", soakAllocationPath, {
       samplingIntervalBytes: soakSamplingIntervalBytes,
       includeWorkers: values["worker-allocations"],
@@ -4360,6 +4402,7 @@ try {
   if (soakAllocationPath) {
     // Stop after the GC/loop window so the profiler's forced collection cannot affect acceptance.
     await controlGatewayProfile(gateway, "heap", "stop", soakAllocationPath);
+    capturingSoakAllocations = false;
     const profile = readGatewayHeapProfile(soakAllocationPath, {
       samplingIntervalBytes: soakSamplingIntervalBytes,
     });
@@ -4367,6 +4410,9 @@ try {
     wholeSoakAllocation = {
       ...profile,
       completedTurns,
+      deliveredSessionEvents: wholeSoakSessionDeliveries,
+      deliveryCountScope:
+        "controller receipts from allocation-start request through allocation-stop acknowledgment, including cohort idle gaps and profile-control edges",
       allocatedMbPerTurn: profile.sampledAllocatedBytes / 1_000_000 / completedTurns,
       ...(values["worker-allocations"]
         ? { workerManifestPath: `${soakAllocationPath}.workers.json` }
@@ -4540,6 +4586,7 @@ try {
     sessionRowDeltas: values["session-row-deltas"],
     presenceDeltas: values["presence-deltas"],
     sessionEnvelopeRefs: values["session-envelope-refs"],
+    sessionCapabilityCohorts,
     listIntervalMs,
     mixedRpc: values["mixed-rpc"],
     ...(values["dashboard-rpc"]
@@ -4670,6 +4717,10 @@ try {
       ? {
           durationMs,
           warmupMs,
+          warmupCohorts: warmupRoundCount,
+          warmupCompletedAtEpochMs,
+          barrierWaitMs: startAt ? startAt - warmupCompletedAtEpochMs : 0,
+          measurementStartedAtEpochMs: measurementStartedAt,
           roundIntervalMs,
           soakRounds,
           memoryIntervalMs,

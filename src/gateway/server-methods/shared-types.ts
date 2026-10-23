@@ -615,7 +615,7 @@ export type SessionEventProjection = {
   serializeSession?: () => string;
   /** Publication-owned UTF-8 message field, including its trailing comma. */
   serializeMessage?: () => Buffer;
-  delivered?: () => void;
+  delivered?: (client: GatewayClient) => void;
 };
 
 type SessionEventProjectionScope = {

@@ -72,6 +72,10 @@ if (isMainThread) {
     const projectionSources = new Map<string, string>();
     if (sessionProjectionSource) {
       for (const file of [
+        "server-broadcast.ts",
+        "server-broadcast-types.ts",
+        "server-connection-state.ts",
+        "session-ancestor-references.ts",
         "session-event-projection.ts",
         "session-row-presentation.ts",
         "session-sharing-read.ts",
@@ -88,14 +92,14 @@ if (isMainThread) {
       load(url, context, nextLoad) {
         const loaded = nextLoad(url, context);
         const projectionSource = projectionSources.get(url);
-        if (projectionSource !== undefined) {
+        if (projectionSource !== undefined && url !== owner) {
           // Preserve canonical imports and original TypeScript lines in sampled stacks.
           return { ...loaded, format: "module-typescript", source: projectionSource };
         }
         if (url !== owner) {
           return loaded;
         }
-        let source = readFileSync(new URL(url), "utf8");
+        let source = projectionSource ?? readFileSync(new URL(url), "utf8");
         // Native source preserves the broadcaster's name in allocation profiles without a timer.
         if (!broadcastTiming) {
           return { ...loaded, format: "module-typescript", source };

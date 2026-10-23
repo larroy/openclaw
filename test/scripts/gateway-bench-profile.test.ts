@@ -104,6 +104,56 @@ function heapBytesUnder(
   );
 }
 
+it("loads coherent projection owners at canonical URLs with sibling imports", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "gateway-projection-source-"));
+  const files = [
+    "server-broadcast.ts",
+    "server-broadcast-types.ts",
+    "server-connection-state.ts",
+    "session-ancestor-references.ts",
+    "session-event-projection.ts",
+    "session-row-presentation.ts",
+    "session-sharing-read.ts",
+    "session-utils-list.ts",
+  ];
+  const gatewayUrl = new URL("../../src/gateway/", import.meta.url).href;
+  for (const file of files) {
+    await writeFile(
+      path.join(directory, file),
+      `export const marker: string = ${JSON.stringify(file)};
+export const location = import.meta.url;
+${file === "server-connection-state.ts" ? 'export { marker as sibling } from "./session-event-projection.js";' : ""}`,
+    );
+  }
+  const { closed, stderr, stdout } = spawnFixture(
+    [
+      "--import",
+      new URL("../../scripts/tsx.mjs", import.meta.url).href,
+      "--input-type=module",
+      "-e",
+      `process.argv[1] = ${JSON.stringify(fileURLToPath(new URL("../../src/entry.ts", import.meta.url)))};
+process.env.OPENCLAW_BENCH_SESSION_PROJECTION_SOURCE = ${JSON.stringify(directory)};
+await import(${JSON.stringify(preloadUrl)});
+const owners = [];
+for (const file of ${JSON.stringify(files)}) {
+  const { marker, location, sibling } = await import(new URL(file, ${JSON.stringify(gatewayUrl)}));
+  owners.push({ marker, location, ...(sibling ? { sibling } : {}) });
+}
+console.log(JSON.stringify(owners));`,
+    ],
+    directory,
+  );
+  expect(await closed, stderr()).toEqual([0, null]);
+  expect(JSON.parse(stdout())).toEqual(
+    files.map((file) =>
+      Object.assign(
+        { marker: file, location: new URL(file, gatewayUrl).href },
+        file === "server-connection-state.ts" ? { sibling: "session-event-projection.ts" } : {},
+      ),
+    ),
+  );
+});
+
 it("attributes broadcast allocations through deep stacks without double counting", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "gateway-broadcast-profile-"));
   onTestFinished(() => rm(directory, { recursive: true, force: true }));

@@ -35,26 +35,35 @@ it("retains only handed-off vectors, separates ancestor admission, and restarts 
   const { owner, resets, read, before, diff, close } = await fixture();
   const first = row("agent:main:one", { label: "a".repeat(500), lastRunError: "old" });
   try {
-    owner.prepareRows([first], diff);
+    ConnectionSessionRows.prepareRows([first], diff)(owner);
     expect(await read()).toEqual(before);
-    owner.prepareRows([first], diff).delivered();
+    ConnectionSessionRows.prepareRows([first], diff)(owner).delivered(owner);
     expect((await read()).entries - before.entries).toBe(1);
     owner.clearAncestors();
-    const changed = owner.prepareRows([row(first.key, { label: first.label, updatedAt: 2 })], diff);
+    const changed = ConnectionSessionRows.prepareRows(
+      [row(first.key, { label: first.label, updatedAt: 2 })],
+      diff,
+    )(owner);
     expect(changed.wire[0]).toMatchObject({
       base: 1,
       version: 2,
       set: { updatedAt: 2 },
       remove: ["lastRunError"],
     });
-    changed.delivered();
-    const replacement = owner.prepareRows([row(first.key, { sessionId: "replacement" })], diff);
+    changed.delivered(owner);
+    const replacement = ConnectionSessionRows.prepareRows(
+      [row(first.key, { sessionId: "replacement" })],
+      diff,
+    )(owner);
     expect(replacement.wire[0]).toHaveProperty("full");
     await read();
     expect(resets).toEqual([]);
-    replacement.delivered();
+    replacement.delivered(owner);
     owner.clear("projection");
-    expect(owner.prepareRows([first], diff).wire[0]).toMatchObject({ version: 4, full: first });
+    expect(ConnectionSessionRows.prepareRows([first], diff)(owner).wire[0]).toMatchObject({
+      version: 4,
+      full: first,
+    });
   } finally {
     await close();
   }
@@ -72,7 +81,7 @@ it("evicts by handed-off row order and bounds 25 fully populated connections", a
   try {
     for (const connection of owners) {
       for (const value of rows) {
-        connection.prepareRows([value], diff).delivered();
+        ConnectionSessionRows.prepareRows([value], diff)(connection).delivered(connection);
       }
     }
     const retained = await read();
@@ -80,10 +89,14 @@ it("evicts by handed-off row order and bounds 25 fully populated connections", a
     expect(retained.estimatedBytes - before.estimatedBytes).toBeLessThanOrEqual(
       25 * 2 * 1024 * 1024,
     );
-    owner.prepareRows([rows[0]!], diff).delivered();
-    owner.prepareRows([row("agent:main:overflow")], diff).delivered();
-    expect(owner.prepareRows([rows[0]!], diff).wire[0]).toHaveProperty("base");
-    expect(owner.prepareRows([rows[1]!], diff).wire[0]).toHaveProperty("full");
+    ConnectionSessionRows.prepareRows([rows[0]!], diff)(owner).delivered(owner);
+    ConnectionSessionRows.prepareRows([row("agent:main:overflow")], diff)(owner).delivered(owner);
+    expect(ConnectionSessionRows.prepareRows([rows[0]!], diff)(owner).wire[0]).toHaveProperty(
+      "base",
+    );
+    expect(ConnectionSessionRows.prepareRows([rows[1]!], diff)(owner).wire[0]).toHaveProperty(
+      "full",
+    );
     await read();
     expect(resets).toEqual([{ cause: "evicted", count: 1 }]);
   } finally {
@@ -102,8 +115,8 @@ it("sends retain:false without disturbing the LRU when vectors exceed the byte c
   try {
     for (let i = 0; i < SESSION_ROW_DELTA_MAX_ENTRIES; i++) {
       const next = row(`agent:main:wide-${i}`, wide);
-      const delivery = owner.prepareRows([next], diff);
-      delivery.delivered();
+      const delivery = ConnectionSessionRows.prepareRows([next], diff)(owner);
+      delivery.delivered(owner);
       if ("retain" in delivery.wire[0]!) {
         rejected = next;
         break;
@@ -116,7 +129,7 @@ it("sends retain:false without disturbing the LRU when vectors exceed the byte c
     if (!rejected) {
       throw new Error("Expected the vector byte limit");
     }
-    expect(owner.prepareRows([rejected], diff).wire[0]).toMatchObject({
+    expect(ConnectionSessionRows.prepareRows([rejected], diff)(owner).wire[0]).toMatchObject({
       full: rejected,
       retain: false,
     });

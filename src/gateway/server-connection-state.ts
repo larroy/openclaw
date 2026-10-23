@@ -60,8 +60,12 @@ export function createGatewayConnectionState(params: {
     }
   };
   const forgetAncestor = (key: string) => {
+    const forget = ConnectionSessionRows.forget(key);
     for (const client of clients) {
-      connectionRows.get(client)?.forget(key);
+      const references = connectionRows.get(client);
+      if (references) {
+        forget(references);
+      }
     }
   };
   // RPCs survive ordinary disconnects, so connection-owned projections still

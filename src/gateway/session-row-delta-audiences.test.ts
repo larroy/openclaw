@@ -1,4 +1,5 @@
-import { expect, it } from "vitest";
+import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { expect, it, vi } from "vitest";
 import type { EventFrame } from "../../packages/gateway-protocol/src/index.js";
 import { GatewayChatEvents } from "../../ui/src/api/gateway-chat-events.ts";
 import { replaceSessionEntrySync } from "../config/sessions/session-accessor.js";
@@ -27,11 +28,19 @@ it("separates equal versions with different contents when reusing recipient enco
       cfg,
     });
     const detach = connection.attachSessionRowProjection(projection);
-    const peers = ["current", "stale", "current-refs", "stale-refs", "legacy"].map((id) => {
+    const peers = [
+      "current",
+      "stale",
+      "current-refs",
+      "stale-refs",
+      "current-copy",
+      "current-refs-copy",
+      "legacy",
+    ].map((id) => {
       const peer = createSessionRowEventPeer(profile, id, 1);
       if (id !== "legacy") {
         peer.client.connect.caps = ["session-row-deltas"];
-        if (id.endsWith("-refs")) {
+        if (id.includes("-refs")) {
           peer.client.connect.caps.push("session-event-field-refs");
         }
       }
@@ -62,16 +71,33 @@ it("separates equal versions with different contents when reusing recipient enco
       decodeLast(peers[3]!);
       write("After");
       await projection.ensureMaterialized();
-      publish(["current", "current-refs"]);
+      publish(["current", "current-refs", "current-copy", "current-refs-copy"]);
       decodeLast(peers[0]!);
       decodeLast(peers[2]!);
+      decodeLast(peers[4]!);
+      decodeLast(peers[5]!);
       // Both sockets have version 1; the unchanged recipient is encoded first.
-      publish(peers.map((peer) => peer.client.connId));
-      const expected = decodeLast(peers[4]!);
+      const stringify = JSON.stringify;
+      let wireEncodings = 0;
+      const serialization = vi.spyOn(JSON, "stringify").mockImplementation((...args) => {
+        const value: unknown = args[0];
+        if (isRecord(value) && value.key === key && typeof value.version === "number") {
+          wireEncodings++;
+        }
+        return stringify(...args);
+      });
+      try {
+        publish(peers.map((peer) => peer.client.connId));
+      } finally {
+        serialization.mockRestore();
+      }
+      // Two baselines each need two size comparisons and one encoding shared across capabilities.
+      expect(wireEncodings).toBeLessThanOrEqual(6);
+      const expected = decodeLast(peers.at(-1)!);
       for (const peer of peers.slice(0, -1)) {
         expect(decodeLast(peer)).toEqual(expected);
         const payload = JSON.parse(peer.send.mock.lastCall![0]).payload;
-        if (peer.client.connId.endsWith("-refs")) {
+        if (peer.client.connId.includes("-refs")) {
           expect(payload.sessionFieldRefs).toEqual(expect.any(Array));
           expect(payload).not.toHaveProperty("label");
         } else {
