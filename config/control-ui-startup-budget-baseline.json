@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 315881,
-  "reason": "Detailed tool rows defer parser and formatting work; matched build 258e9d7 measures 315881 B startup and 1405648 B Chat with unchanged critical requests.",
-  "updatedAt": "2026-10-22"
+  "startupJsGzipBytes": 316320,
+  "reason": "Isolate the accepted New Session composer transfer from the chat boot graph",
+  "updatedAt": "2026-10-23"
 }

@@ -56,10 +56,10 @@ const controlUiPerformanceBudgets = {
   startupJsRequests: 9,
   chatBootJsRequests: 25,
   newBootJsRequests: 19,
-  // Deferred emoji/Markdown loads reduce Chat to 1,387,254 B and New to 859,625 B.
+  // Isolating accepted composer transfers measures Chat at 1,385,442 B and New at 859,741 B.
   // Preserve each route's relative headroom against its measured merge base.
-  chatBootJsGzipBytes: 1_439_860,
-  newBootJsGzipBytes: 871_648,
+  chatBootJsGzipBytes: 1_438_511,
+  newBootJsGzipBytes: 871_499,
   startupCssRequests: 1,
   // Solid 2 action/optimistic runtime adoption; offset tracked by HF-STARTUP-BUDGET.
   startupJsGzipBytes: 325_081,
