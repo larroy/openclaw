@@ -11,7 +11,7 @@ function restore(signal?: AbortSignal) {
     } as unknown as CronStoredJob,
     agentId: "main",
     sessionKey: "agent:main:dashboard:continuation",
-    entry: { sessionId: "session", lifecycleRevision: 1 },
+    entry: { sessionId: "session", lifecycleRevision: "1" },
     signal,
     deliveryAttemptFence: null,
   });
