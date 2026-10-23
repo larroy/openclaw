@@ -1,5 +1,5 @@
 {
   "startupJsGzipBytes": 315881,
-  "reason": "Retain stricter main startup baseline; matched fixed-stamp 2c5 builds measure 316173 to 316216 B (+43 B within variance), Chat1399629/New913062 B at unchanged7/24/18 requests. Ratchet route caps using current relative headroom.",
+  "reason": "Closed dialog deferrals preserve the stricter 315881 B startup baseline; matched current-main builds measure 316336 B unchanged startup, 1382302 B Chat and 856609 B New Session.",
   "updatedAt": "2026-10-23"
 }
