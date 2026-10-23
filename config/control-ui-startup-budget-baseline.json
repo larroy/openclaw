@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 316320,
-  "reason": "Isolate the accepted New Session composer transfer from the chat boot graph",
+  "startupJsGzipBytes": 316323,
+  "reason": "Isolate accepted New Session composer transfer after deferred menu navigation",
   "updatedAt": "2026-10-23"
 }
