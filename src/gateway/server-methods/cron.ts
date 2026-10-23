@@ -16,6 +16,7 @@ import {
 } from "../../cron/config-revision.js";
 import { resolveCronDeliveryFailurePreview } from "../../cron/delivery-preview.js";
 import { cronJobReadView } from "../../cron/job-read-view.js";
+import { resolveCronOperatorExecutionRevision } from "../../cron/service/jobs-tool-policy.js";
 import type { CronUpdateOptions } from "../../cron/service/state.js";
 import { isInvalidCronSessionTargetIdError } from "../../cron/session-target.js";
 import { CronStreamApprovalEndedError } from "../../cron/stream-approval-outcome.js";
@@ -160,6 +161,7 @@ export const cronHandlers: GatewayRequestHandlers = {
     let capture: ReturnType<typeof resolveCronCreatorAuthorityCapture>;
     let inference: Awaited<ReturnType<typeof captureCronUpdatedInferenceBinding>>;
     let operatorCapture: Awaited<ReturnType<typeof captureCronCreatorSession>> | undefined;
+    let operatorSourceExecutionRevision: string | undefined;
     let streamExecPolicy: ReturnType<typeof resolveCronStreamExecPolicy>;
     let creatorSessionId: string | undefined;
     if (callerScope && !callerScope.manageAll && "agentId" in patch) {
@@ -236,6 +238,7 @@ export const cronHandlers: GatewayRequestHandlers = {
       capture &&= { ...capture, captureRuntimeAuthority: () => runtimeAuthority };
       const nextJob = await validateUpdate(currentJob);
       if (creatorScope) {
+        operatorSourceExecutionRevision = resolveCronOperatorExecutionRevision(nextJob);
         operatorCapture = await captureCronCreatorSession(
           nextJob,
           creatorScope,
@@ -267,7 +270,7 @@ export const cronHandlers: GatewayRequestHandlers = {
     });
     const updateOptions: CronUpdateOptions = {
       ...(operatorCapture?.operatorSource
-        ? { operatorSource: operatorCapture.operatorSource }
+        ? { operatorSource: operatorCapture.operatorSource, operatorSourceExecutionRevision }
         : {}),
       ...(touchesToolRuntime
         ? {

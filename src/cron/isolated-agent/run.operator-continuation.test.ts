@@ -1,5 +1,6 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { readAdmittedRunOperatorAuthority } from "../../agents/admitted-run-context.js";
 import { createOpenClawCodingToolsAsync } from "../../agents/agent-tools.js";
 import { withPreparedEmbeddedGatewayTools } from "../../agents/embedded-agent-runner/run/attempt-gateway-tools.js";
 import { applyEmbeddedAttemptToolsAllow } from "../../agents/embedded-agent-runner/run/attempt-tool-construction-plan.js";
@@ -28,6 +29,7 @@ import { createGitHubPublicationCoordinator } from "../../gateway/github-publica
 import { captureGatewayOperatorRunAuthority } from "../../gateway/operator-run-authority.js";
 import { createOperatorRecoveryFixture } from "../../gateway/operator-run-recovery.test-support.js";
 import { createAgentEventTestHarness } from "../../gateway/server-chat.agent-events.test-harness.js";
+import { cronHandlers } from "../../gateway/server-methods/cron.js";
 import {
   admission,
   cron as creatorCron,
@@ -38,6 +40,7 @@ import {
   SESSION_ID,
   stateDir,
 } from "../../gateway/server-methods/requester-cron-authority.test-support.js";
+import { createSyntheticPluginRuntimeClient } from "../../gateway/server-plugin-runtime-client.js";
 import { createMockGatewayRecoveryRuntime } from "../../gateway/server-recovery-runtime.test-support.js";
 import { prepareGatewayRunShutdown } from "../../gateway/server-run-shutdown.js";
 import { persistGatewaySessionLifecycleEvent } from "../../gateway/session-lifecycle-state.js";
@@ -63,11 +66,15 @@ import {
 } from "../../sessions/session-controller.message-injection.js";
 import { createUserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
 import { createDeferredCore } from "../../shared/deferred.js";
+import { runOpenClawStateWriteTransaction } from "../../state/openclaw-state-db.js";
 import { setCanonicalUserProfileRole } from "../../state/user-profile-writes.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
 import { createGatewaySchedulerClock } from "../../test-utils/gateway-scheduler-clock.js";
+import { resolveCronRequesterExecutionRevision } from "../service/jobs-tool-policy.js";
 import { onTimer } from "../service/timer.test-support.js";
 import { saveCronStore } from "../store.js";
+import { cronStoreKey } from "../store/key.js";
+import { updateCronRuntimeRow } from "../store/row-codec.js";
 import { readSessionMessagesAsyncMock } from "./run-automation.test-support.js";
 import { prepareAuthorityConfig, resetAuthorityRunHarness } from "./run.authority.test-support.js";
 import {
@@ -145,10 +152,15 @@ it.each([
   "session replaced",
   "active recovery",
   "queued owner payload edit",
+  "queued manager rename",
+  "owner capture races manager payload",
   "recurring trigger reload",
 ] as const)("scheduled continuation preserves the %s boundary", async (scenario) => {
   const restarting = scenario.startsWith("restart");
-  const queuedEdit = scenario === "queued owner payload edit";
+  const ownerEdit = scenario === "queued owner payload edit";
+  const managerRename = scenario === "queued manager rename";
+  const captureRace = scenario === "owner capture races manager payload";
+  const queuedEdit = ownerEdit || managerRename || captureRace;
   const recurring = scenario === "recurring trigger reload";
   const config = await prepareAuthorityConfig({
     tools: { allow: [AUTOMATIONS_TOOL_NAME, "github_publish"] },
@@ -218,6 +230,22 @@ it.each([
   const creatorUpdated = createDeferredCore();
   const releaseCreator = createDeferredCore();
   let creation: Promise<unknown> | undefined;
+  const managerUpdate = async (patch: Record<string, unknown>) => {
+    const stored = expectDefined((await fixture.read())[0], "manager target");
+    const respond = vi.fn();
+    await expectDefined(
+      cronHandlers["cron.update"],
+      "cron update handler",
+    )({
+      req: { type: "req", id: "manager-update", method: "cron.update" },
+      params: { jobId: stored.id, patch },
+      client: createSyntheticPluginRuntimeClient({ scopes: ["operator.admin"] }),
+      context,
+      isWebchatConnect: () => false,
+      respond,
+    });
+    expect(respond.mock.calls[0]?.[0]).toBe(true);
+  };
   try {
     const createRun = () =>
       inRun(
@@ -274,7 +302,9 @@ it.each([
                     payload: {
                       kind: "agentTurn",
                       message: "Inspect and land the reviewed PR",
-                      toolsAllow: ["github_publish"],
+                      toolsAllow: ownerEdit
+                        ? ["github_publish", AUTOMATIONS_TOOL_NAME]
+                        : ["github_publish"],
                     },
                     delivery: { mode: "none" },
                     deleteAfterRun: false,
@@ -284,13 +314,21 @@ it.each([
                   const created = expectDefined((await fixture.read())[0], "created continuation");
                   creatorReady.resolve();
                   await updateCreator.promise;
-                  await automations.execute("refresh-continuation", {
-                    action: "update",
-                    jobId: created.id,
-                    job: {
-                      payload: { kind: "agentTurn", message: "Land the refreshed reviewed PR" },
-                    },
-                  });
+                  if (!managerRename) {
+                    await automations.execute("refresh-continuation", {
+                      action: "update",
+                      jobId: created.id,
+                      job: captureRace
+                        ? { description: "Owner metadata refresh" }
+                        : {
+                            name: "Refreshed authorized landing",
+                            payload: {
+                              kind: "agentTurn",
+                              message: "Land the refreshed reviewed PR",
+                            },
+                          },
+                    });
+                  }
                   creatorUpdated.resolve();
                   await releaseCreator.promise;
                 }
@@ -421,12 +459,22 @@ it.each([
   let interruptedRunId: string | undefined;
   let entered = 0;
   let offered: unknown;
+  let admittedOperator = false;
   const results: unknown[] = [];
   let rejected: string | undefined;
+  let nextCheckDefinition: string | undefined;
   runEmbeddedAgentMock.mockImplementation(async (params: RunEmbeddedAgentParams) => {
     entered++;
-    if (queuedEdit || recurring) {
-      expect(params.prompt).toContain(queuedEdit ? "Land the refreshed reviewed PR" : "CI passed");
+    if (ownerEdit || recurring || managerRename || captureRace) {
+      expect(params.prompt).toContain(
+        ownerEdit
+          ? "Land the refreshed reviewed PR"
+          : recurring
+            ? "CI passed"
+            : managerRename
+              ? "Manager-authored instructions"
+              : "Manager replacement payload",
+      );
     }
     const admitted = await expectDefined(params.preparedRunAdmission, "scheduled admission").admit(
       "gateway",
@@ -527,10 +575,27 @@ it.each([
             abortSignal: params.abortSignal,
             runtimeToolAllowlist: params.toolsAllow,
             scheduledToolPolicy: params.scheduledToolPolicy,
+            trigger: "cron",
+            jobId: job.id,
           }),
           params.toolsAllow,
           { toolMeta: getPluginToolMeta },
         );
+        if (ownerEdit) {
+          nextCheckDefinition = resolveCronRequesterExecutionRevision(
+            expectDefined(context.cron.getJob(job.id), "before next_check"),
+          );
+          await expectDefined(
+            tools.find((tool) => tool.name === AUTOMATIONS_TOOL_NAME),
+            "continuation automations",
+          ).execute("next-check", { action: "next_check", in: "3m" });
+          expect(
+            resolveCronRequesterExecutionRevision(
+              expectDefined(context.cron.getJob(job.id), "after next_check"),
+            ),
+          ).toBe(nextCheckDefinition);
+        }
+        admittedOperator = readAdmittedRunOperatorAuthority(admitted) !== undefined;
         const publish = tools.find((tool) => tool.name === "github_publish");
         offered = publish?.parameters;
         if (publish && JSON.stringify(offered).includes('"inspect"')) {
@@ -583,15 +648,29 @@ it.each([
     expect(entered).toBe(0);
     const reloaded = expectDefined(execution.getJob(job.id), "reloaded scheduled job");
     if (recurring) {
-      await execution.update(job.id, { enabled: false });
-      await execution.update(job.id, {
-        enabled: true,
-        schedule: { kind: "every", everyMs: 240_000 },
-      });
+      // Stored before upgrade: main's hash was captured while enabled, then the runtime disabled it.
       execution.stop();
       await execution.waitForIdle();
+      const stored = expectDefined((await fixture.read())[0], "pre-upgrade continuation");
+      stored.operatorSource = {
+        ...expectDefined(stored.operatorSource, "pre-upgrade source"),
+        executionRevision: resolveCronRequesterExecutionRevision(stored),
+      };
+      await saveCronStore(schedulerState.deps.storePath, { version: 1, jobs: [stored] });
+      runOpenClawStateWriteTransaction(({ db }) => {
+        updateCronRuntimeRow(
+          db,
+          cronStoreKey(schedulerState.deps.storePath),
+          { ...stored, enabled: false },
+          true,
+        );
+      });
+      const disabled = expectDefined((await fixture.read())[0], "runtime-disabled row");
+      expect(disabled.enabled).toBe(false);
+      expect(disabled.operatorSource).toEqual(stored.operatorSource);
       await execution.start();
-      expect(execution.getJob(job.id)?.operatorSource).toBeDefined();
+      await execution.update(job.id, { enabled: true });
+      expect(execution.getJob(job.id)?.operatorSource).toEqual(stored.operatorSource);
     }
     if (scenario === "paused force run") {
       expect(reloaded.enabled).toBe(false);
@@ -604,6 +683,17 @@ it.each([
           expect(execution.getJob(job.id)?.state.runningReceiptId).toEqual(expect.any(String));
         });
         expect(entered).toBe(0);
+        if (managerRename) {
+          await managerUpdate({ name: "Manager-authored instructions" });
+        } else if (captureRace) {
+          const update = execution.updateWithPrecondition.bind(execution);
+          vi.spyOn(execution, "updateWithPrecondition").mockImplementationOnce(async (...args) => {
+            await managerUpdate({
+              payload: { kind: "agentTurn", message: "Manager replacement payload" },
+            });
+            return update(...args);
+          });
+        }
         updateCreator.resolve();
         await Promise.race([creatorUpdated.promise, expectDefined(creation, "creator turn")]);
         expect(entered).toBe(0);
@@ -663,8 +753,20 @@ it.each([
     await finished.promise;
     await execution.waitForIdle();
     const state = expectDefined(execution.getJob(job.id), "finished scheduled job").state;
+    if (managerRename || captureRace) {
+      expect(admittedOperator).toBe(false);
+      expect((await fixture.read())[0]?.operatorSource).toBeUndefined();
+    }
     if (queuedEdit || recurring) {
       expect(state.autoDisabled).toBeUndefined();
+    }
+    if (ownerEdit) {
+      expect(state.nextRunAtMs).toBe(clock.clock.now() + 180_000);
+      expect(
+        resolveCronRequesterExecutionRevision(
+          expectDefined(execution.getJob(job.id), "settled next_check"),
+        ),
+      ).toBe(nextCheckDefinition);
     }
     if (restarting) {
       await shutdownReleased;
@@ -757,7 +859,7 @@ it.each([
         scenario === "role revoked during merge" ? "error" : "ok",
       );
       expect(entered).toBe(1);
-      if (scenario === "operator" || scenario === "paused force run" || queuedEdit || recurring) {
+      if (scenario === "operator" || scenario === "paused force run" || ownerEdit || recurring) {
         expect(JSON.stringify(offered)).toContain('"inspect"');
         expect(JSON.stringify(offered)).toContain("merge");
         expect(rejected).toBeUndefined();
@@ -792,7 +894,7 @@ it.each([
     if (
       scenario !== "operator" &&
       scenario !== "paused force run" &&
-      !queuedEdit &&
+      !ownerEdit &&
       !recurring &&
       scenario !== "role revoked during merge"
     ) {
@@ -801,25 +903,44 @@ it.each([
       expect(receipt).not.toHaveBeenCalled();
     }
     if (recurring) {
-      execution.stop();
-      await execution.waitForIdle();
-      const invalid = expectDefined((await fixture.read())[0], "stored continuation");
-      invalid.operatorSource = {
-        ...expectDefined(invalid.operatorSource, "stored operator source"),
-        executionRevision: "invalid-definition",
-      };
-      await saveCronStore(schedulerState.deps.storePath, { version: 1, jobs: [invalid] });
-      await execution.start();
-      clock.setTime(expectDefined(execution.getJob(job.id)?.state.nextRunAtMs, "next occurrence"));
-      await onTimer(schedulerState);
-      await execution.waitForIdle();
-      expect(execution.getJob(job.id)).toMatchObject({
-        enabled: false,
-        state: { lastRunStatus: "error", consecutiveErrors: 1 },
-      });
-      expect(execution.getJob(job.id)?.state.lastError).toContain("definition changed");
-      expect(execution.getJob(job.id)?.state.nextRunAtMs).toBeUndefined();
-      expect(entered).toBe(1);
+      const valid = expectDefined((await fixture.read())[0], "stored continuation");
+      for (const failure of ["definition", "decode", "oversized"] as const) {
+        execution.stop();
+        await execution.waitForIdle();
+        const invalid = structuredClone(valid);
+        const source = expectDefined(invalid.operatorSource, "stored operator source");
+        if (failure === "definition") {
+          source.executionRevision = "invalid-definition";
+        } else if (failure === "decode") {
+          source.source.sourceRunId = "";
+        } else {
+          source.source.snapshot.aliasBindingIds = Array(256).fill("x".repeat(300));
+        }
+        await saveCronStore(schedulerState.deps.storePath, { version: 1, jobs: [invalid] });
+        await execution.start();
+        clock.setTime(
+          expectDefined(execution.getJob(job.id)?.state.nextRunAtMs, "next occurrence"),
+        );
+        await onTimer(schedulerState);
+        await execution.waitForIdle();
+        expect(execution.getJob(job.id)).toMatchObject({
+          enabled: false,
+          state: { lastRunStatus: "error", consecutiveErrors: 1 },
+        });
+        expect(execution.getJob(job.id)?.state.lastError).toContain(
+          failure === "definition"
+            ? "definition"
+            : failure === "decode"
+              ? "source is invalid"
+              : "exceeds its storage bound",
+        );
+        expect(execution.getJob(job.id)?.state.nextRunAtMs).toBeUndefined();
+        clock.setTime(clock.clock.now() + 3_600_000);
+        await onTimer(schedulerState);
+        await execution.waitForIdle();
+        expect(execution.getJob(job.id)?.state.consecutiveErrors).toBe(1);
+        expect(entered).toBe(1);
+      }
     }
   } finally {
     updateCreator.resolve();

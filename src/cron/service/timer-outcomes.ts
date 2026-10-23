@@ -326,14 +326,9 @@ export function applyJobResult(
   } else if (!shouldDelete) {
     if (
       result.status === "error" &&
-      ((result.errorClassification?.kind === "permanent" && isPluginCommandCronJob(job)) ||
-        (job.operatorSource &&
-          /(?:Scheduled operator continuation definition changed|Scheduled operator source no longer owns this conversation|Cron occurrence source authority is no longer active|Restart recovery (?:authentication owner changed|operator (?:source policy changed|identity changed|authority (?:changed|is no longer active))))/.test(
-            result.error ?? "",
-          )))
+      result.errorClassification?.kind === "permanent" &&
+      (isPluginCommandCronJob(job) || job.operatorSource)
     ) {
-      // A retired plugin or invalid continuation source cannot recover through retries.
-      // Keep the first error for inspection and require explicit owner repair.
       job.enabled = false;
       job.state.nextRunAtMs = undefined;
       job.state.startupCatchupAtMs = undefined;

@@ -68,9 +68,6 @@ it("binds a recorded caller origin to executable inputs but not display metadata
       ...job,
       description: "display only",
       displayName: "Readable name",
-      name: "Renamed schedule",
-      enabled: false,
-      schedule: { kind: "every", everyMs: 120_000, anchorMs: 90_000 },
     }),
   ).toBe(true);
   expect(

@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { runOpenClawStateWriteTransaction } from "../../state/openclaw-state-db.js";
-import { resolveCronJobConfigRevision } from "../config-revision.js";
 import { toPublicCronJob } from "../public-job.js";
 import { readCronJobScratchState } from "../scratch-store.js";
 import { setupCronServiceSuite, writeCronStoreSnapshot } from "../service.test-harness.js";
@@ -83,28 +82,8 @@ describe("scheduled tool policy provenance", () => {
     const stored = (await loadCronStore(storePath)).jobs[0];
     expect(stored?.operatorSource).toEqual(created.operatorSource);
     expect(toPublicCronJob(created)).not.toHaveProperty("operatorSource");
-    // Emulate the pre-upgrade hash and a scheduler-owned disable, which did not rebind it.
-    const legacy = structuredClone(created);
-    legacy.operatorSource = {
-      source,
-      executionRevision: resolveCronJobConfigRevision({
-        ...created,
-        operatorSource: undefined,
-        description: undefined,
-        displayName: undefined,
-        createdActor: undefined,
-        toolsAllowProvenance: undefined,
-      }),
-    };
-    legacy.enabled = false;
-    await writeCronStoreSnapshot({ storePath, jobs: [legacy] });
     const display = await update(state, created.id, { description: "Readable description" });
     expect(display.operatorSource).toEqual(created.operatorSource);
-    const rearmed = await update(state, created.id, {
-      enabled: true,
-      schedule: { kind: "every", everyMs: 120_000 },
-    });
-    expect(rearmed.operatorSource).toEqual(created.operatorSource);
     const edited = await update(state, created.id, {
       payload: { kind: "agentTurn", message: "A different task" },
     });

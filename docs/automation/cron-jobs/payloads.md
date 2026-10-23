@@ -124,9 +124,12 @@ automation management remains self-scoped.
 This source is not inferred for existing jobs, guests, isolated/current targets,
 scripts, or another conversation. An authenticated owner update can bind it again
 to the updated task. Executable edits without that authentication discard it.
-Timing, display-only edits, and disabling or re-enabling the job preserve its
-stored source. Disabling or removing a job still cancels its active occurrence;
-re-enabling it does not revive that cancelled occurrence.
+Display-only edits and disabling or re-enabling the job preserve its stored
+source; names, schedules, and other executable inputs remain bound. A fresh
+owner capture applies only to the definition captured, even if another manager
+edits the job before the update commits. Disabling or removing a job still
+cancels its active occurrence; re-enabling it does not revive that cancelled
+occurrence.
 
 A continuation waits for its current conversation turn to finish before reading
 the current job and checking its source at launch. Trigger-supplied context does
@@ -158,7 +161,7 @@ A new account-bound job created by a verified local administrator retains that
 authenticated local source, allowing provider-permitted reads through its saved
 creator account. Editing its `toolsAllow` cap from the same local source explicitly
 reauthorizes an existing job. Description, display-label, and exact no-op edits
-preserve the recorded source. Changes to prompts, tools,
+preserve the recorded source. Changes to model-facing names, prompts, tools, schedules,
 or other executable behavior need fresh source authorization and clear the old source
 when none is present. Remote management alone cannot supply local-source authorization,
 and older jobs without a provable origin remain blocked until reauthorized or recreated
@@ -182,7 +185,7 @@ or thread permissions must allow the edit. The original session creator and a
 configured OpenClaw owner are not substitutes for those native permissions.
 
 Executable edits from the job's owning conversation and account bind the job to
-the current authorized editor. This includes the prompt, model,
+the current authorized editor. This includes the prompt, model, name, schedule,
 delivery, and tool policy. An executable edit without a matching authenticated
 Discord requester clears this permission and stops further native actions from
 the old occurrence. Description and display-label changes preserve it.

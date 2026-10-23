@@ -53,7 +53,6 @@ export async function launchCronRun(
   const continuationSession =
     entry.job.operatorSource && resolveCronSessionTargetSessionKey(entry.job.sessionTarget);
   if (continuationSession) {
-    // Let the creating turn finish its edits before capturing executable inputs.
     await waitForSessionRunIdle(continuationSession, undefined, {
       signal: state.schedulerScope.signal,
     });
@@ -108,7 +107,6 @@ export async function launchCronRun(
       options.payload ??
       executionJob.payload);
   if (options.payload) {
-    // An ad-hoc replacement is not the owner's stored continuation.
     delete executionJob.operatorSource;
   }
   if (options.delivery) {
