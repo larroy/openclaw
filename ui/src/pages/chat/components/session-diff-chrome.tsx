@@ -2,14 +2,14 @@ import { Show } from "solid-js";
 import type { SessionsDiffResult } from "../../../../../packages/gateway-protocol/src/index.js";
 import { Icon } from "../../../components/solid/icon.tsx";
 import { createTextOverflow } from "../../../components/solid/text-overflow.ts";
-import { registerSessionDiffEnglish } from "../../../i18n/locales/en-session-diff.ts";
+import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { DiffStatChips } from "./chat-diff-stat.solid.tsx";
 import { SessionDiffActionIcon } from "./session-diff-menus.tsx";
 import type { SessionDiffViewBindings } from "./session-diff-presentation.ts";
 import { totalDiffStat } from "./session-diff-presentation.ts";
 
-registerEnglishCatalog(registerSessionDiffEnglish);
+registerEnglishCatalog(registerChatSessionEnglish);
 
 export function createSessionDiffChrome(bindings: SessionDiffViewBindings) {
   const {

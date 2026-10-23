@@ -3,10 +3,10 @@ import { CopyButton } from "../../../components/solid/copy-button.tsx";
 import { Icon } from "../../../components/solid/icon.tsx";
 import type { MenuItem } from "../../../components/solid/menu.tsx";
 import { createTextOverflow } from "../../../components/solid/text-overflow.ts";
-import { registerSessionDiffEnglish } from "../../../i18n/locales/en-session-diff.ts";
+import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 
-registerEnglishCatalog(registerSessionDiffEnglish);
+registerEnglishCatalog(registerChatSessionEnglish);
 
 export function desktopCopyPath(
   path: string,

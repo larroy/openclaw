@@ -9,15 +9,8 @@ it("loads optional English copy at each view boundary while keeping shared label
   const { en, manager } = await loadI18n();
   const about = en.aboutPage;
   const dashboards = en.dashboardsPage;
-  const diff = en.chat.sessionDiff;
   expect(manager.t("aboutPage.artifactDetails")).toBe("Control UI build details");
   expect(manager.t("aboutPage.copiedCommit")).toBe("Commit hash copied");
-  expect(manager.t("chat.sessionDiff.title")).toBe("Changes");
-  expect(manager.t("chat.sessionDiff.show")).toBe("Show session changes");
-  const { registerChatSessionEnglish } = await import("./locales/en-chat-session.ts");
-  registerChatSessionEnglish();
-  expect(manager.t("chat.sessionDiff.expandFile")).toBe("chat.sessionDiff.expandFile");
-  expect(manager.t("chat.sessionDiff.loading")).toBe("chat.sessionDiff.loading");
   await manager.setLocale("de");
   for (const { key, load, catalog } of [
     {
@@ -31,12 +24,6 @@ it("loads optional English copy at each view boundary while keeping shared label
       catalog: async () =>
         (await import("./locales/en-dashboards.ts")).registerDashboardsEnglish.catalog,
     },
-    {
-      key: "chat.sessionDiff.loading",
-      load: () => import("../pages/chat/components/session-diff-panel.tsx"),
-      catalog: async () =>
-        (await import("./locales/en-session-diff.ts")).registerSessionDiffEnglish.catalog,
-    },
   ]) {
     expect(manager.t(key)).toBe(key);
     await load();
@@ -46,6 +33,5 @@ it("loads optional English copy at each view boundary while keeping shared label
     expect(manager.t("common.health")).toBe("Gesundheit");
     expect(en.aboutPage).toBe(about);
     expect(en.dashboardsPage).toBe(dashboards);
-    expect(en.chat.sessionDiff).toBe(diff);
   }
 });

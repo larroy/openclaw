@@ -54,7 +54,6 @@ import { registerPortalsEnglish } from "../../ui/src/i18n/locales/en-portals.ts"
 import { registerProcessesEnglish } from "../../ui/src/i18n/locales/en-processes.ts";
 import { registerProfileEnglish } from "../../ui/src/i18n/locales/en-profile.ts";
 import { registerSecretsStoreEnglish } from "../../ui/src/i18n/locales/en-secrets-store.ts";
-import { registerSessionDiffEnglish } from "../../ui/src/i18n/locales/en-session-diff.ts";
 import { registerSessionMachineEnglish } from "../../ui/src/i18n/locales/en-session-machine.ts";
 import { registerSessionOrganizationEnglish } from "../../ui/src/i18n/locales/en-session-organization.ts";
 import { registerSessionPeopleEnglish } from "../../ui/src/i18n/locales/en-session-people.ts";
@@ -130,7 +129,6 @@ const sourceFiles = [
   "en-model-controls.ts",
   "en-model-setup.ts",
   "en-personal-instructions.ts",
-  "en-session-diff.ts",
   "en-session-machine.ts",
   "en-session-organization.ts",
   "en-session-people.ts",
@@ -252,7 +250,6 @@ export function loadControlUiSourceCatalog(): TranslationMap {
         welcome: registerCommandPaletteEnglish.catalog.chat.welcome,
         messages: registerChatMessageMetadataEnglish.catalog.chat.messages,
         toolCards,
-        sessionDiff: registerSessionDiffEnglish.catalog.chat.sessionDiff,
         pullRequests: registerGitHubEnglish.catalog.chat.pullRequests,
       },
       sessionHovercard: registerGitHubEnglish.catalog.sessionHovercard,
