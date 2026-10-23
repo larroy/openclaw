@@ -165,8 +165,9 @@ function createSessionWorkspaceFileContent(
             const details =
               error instanceof GatewayRequestError &&
               error.details &&
-              typeof error.details === "object"
-                ? (error.details as { type?: unknown })
+              typeof error.details === "object" &&
+              "type" in error.details
+                ? error.details
                 : null;
             if (
               details?.type === "session_file_source_changed" &&

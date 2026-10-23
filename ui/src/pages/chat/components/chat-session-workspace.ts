@@ -52,10 +52,18 @@ async function readWorkspaceContent<T>(
   read: (runtime: typeof import("./chat-session-workspace-content.runtime.ts")) => Promise<T>,
 ): Promise<T | null> {
   const client = state.client;
-  const runtime = await import("./chat-session-workspace-content.runtime.ts");
+  const {
+    downloadSessionFile,
+    loadSessionWorkspaceArtifactContent,
+    loadSessionWorkspaceFileContent,
+  } = await import("./chat-session-workspace-content.runtime.ts");
   // Loading code cannot transfer an admitted preview to a replacement connection or checkout.
   return state.connected && state.client === client && isCurrentSessionWorkspace(state, workspace)
-    ? read(runtime)
+    ? read({
+        downloadSessionFile,
+        loadSessionWorkspaceArtifactContent,
+        loadSessionWorkspaceFileContent,
+      })
     : null;
 }
 
