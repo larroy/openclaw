@@ -329,6 +329,7 @@ export function applyJobResult(
       result.errorClassification?.kind === "permanent" &&
       (isPluginCommandCronJob(job) || job.operatorSource)
     ) {
+      // A retired plugin or unusable continuation source cannot recover through retries.
       job.enabled = false;
       job.state.nextRunAtMs = undefined;
       job.state.startupCatchupAtMs = undefined;

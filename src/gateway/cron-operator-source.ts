@@ -5,6 +5,7 @@ import type { CronCompletionDeliveryFence } from "../cron/delivery-attempt-fence
 import { CronOperatorSourceError } from "../cron/operator-source-error.js";
 import { resolveCronOperatorExecutionRevision } from "../cron/service/jobs-tool-policy.js";
 import type { CronStoredJob } from "../cron/types.js";
+import { isAbortError } from "../infra/abort-signal.js";
 import { getPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
 import { decodeGatewayOperatorRecoverySource } from "./operator-run-recovery-source.codec.js";
 import { restoreGatewayOperatorSource } from "./operator-run-recovery.js";
@@ -76,6 +77,10 @@ export async function restoreCronOperatorSource(params: {
     return operator;
   } catch (error) {
     operator?.release();
+    // Restart and cancellation end this attempt; they say nothing about the stored source.
+    if (params.signal?.aborted || isAbortError(error)) {
+      throw error;
+    }
     throw new CronOperatorSourceError(error instanceof Error ? error.message : String(error), {
       cause: error,
     });
