@@ -94,6 +94,7 @@ async function withSessionUsageDiagnosticSource<
 export async function discoverAllSessions(params: {
   agentId: string;
   startMs?: number;
+  endMs?: number;
 }): Promise<DiscoveredSession[]> {
   const result = await runUsageCostWorker(prepareUsageCostWorker(params), {
     kind: "inventory",

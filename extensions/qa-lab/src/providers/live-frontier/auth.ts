@@ -136,10 +136,10 @@ function qaLiveRequiresCodexAuth(params: {
   );
 }
 
-function resolveQaLiveAnthropicSetupToken() {
+function resolveQaLiveAnthropicSetupToken(env: NodeJS.ProcessEnv = process.env) {
   const token = (
-    process.env[QA_LIVE_ANTHROPIC_SETUP_TOKEN_ENV]?.trim() ||
-    process.env[QA_LIVE_SETUP_TOKEN_VALUE_ENV]?.trim() ||
+    env[QA_LIVE_ANTHROPIC_SETUP_TOKEN_ENV]?.trim() ||
+    env[QA_LIVE_SETUP_TOKEN_VALUE_ENV]?.trim() ||
     ""
   ).replaceAll(/\s+/g, "");
   if (!token) {
@@ -150,7 +150,7 @@ function resolveQaLiveAnthropicSetupToken() {
     throw new Error(`Invalid QA Anthropic setup-token: ${tokenError}`);
   }
   const profileId =
-    process.env[QA_LIVE_ANTHROPIC_SETUP_TOKEN_PROFILE_ENV]?.trim() ||
+    env[QA_LIVE_ANTHROPIC_SETUP_TOKEN_PROFILE_ENV]?.trim() ||
     QA_LIVE_ANTHROPIC_SETUP_TOKEN_PROFILE_ID;
   return { token, profileId };
 }
@@ -158,8 +158,9 @@ function resolveQaLiveAnthropicSetupToken() {
 export async function stageQaLiveAnthropicSetupToken(params: {
   cfg: OpenClawConfig;
   stateDir: string;
+  env?: NodeJS.ProcessEnv;
 }): Promise<OpenClawConfig> {
-  const resolved = resolveQaLiveAnthropicSetupToken();
+  const resolved = resolveQaLiveAnthropicSetupToken(params.env);
   if (!resolved) {
     return params.cfg;
   }
@@ -187,6 +188,7 @@ export async function stageQaLiveApiKeyProfiles(params: {
   stateDir: string;
   providerIds: readonly string[];
   env?: NodeJS.ProcessEnv;
+  agentIds?: readonly string[];
 }): Promise<OpenClawConfig> {
   const env = params.env ?? process.env;
   const providerIds = normalizeQaLiveProviderIds(params.providerIds);
@@ -225,8 +227,9 @@ export async function stageQaLiveApiKeyProfiles(params: {
   if (Object.keys(profiles).length === 0) {
     return next;
   }
+  const agentIds = uniqueStrings(params.agentIds ?? QA_LIVE_API_KEY_AGENT_IDS);
   await Promise.all(
-    QA_LIVE_API_KEY_AGENT_IDS.map((agentId) =>
+    agentIds.map((agentId) =>
       writeQaAuthProfiles({
         agentId,
         profiles,

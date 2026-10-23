@@ -18,6 +18,8 @@ export const INGRESS_CLAIM_LEASE_MS = 30 * 60 * 1000;
 type IngressClaimLivenessOptions = {
   maxAgeMs?: number;
   now?: number;
+  /** Test seam for PID existence (including Linux TID impersonation). */
+  processExists?: (pid: number) => boolean;
   /** Test seam for process start-time identity. */
   readProcessStartTime?: (pid: number) => number | null;
 };
@@ -127,8 +129,9 @@ function isClaimOwnerProcessInstanceLive(
   pid: number,
   options?: IngressClaimLivenessOptions,
 ): boolean {
+  const exists = options?.processExists ?? processExists;
   const readStart = options?.readProcessStartTime ?? readProcessStartTime;
-  if (!processExists(pid)) {
+  if (!exists(pid)) {
     return false;
   }
   const startToken = parseOwnerStartToken(ownerId);

@@ -229,6 +229,7 @@ export async function selectUsageSessions(params: {
   specificKey: string | null;
   groupingMode: UsageGroupingMode;
   startMs: number;
+  endMs: number;
   visibilityFilter?: (key: string, entry: SessionEntry) => boolean;
 }): Promise<UsageSessionSelection[]> {
   const {
@@ -238,6 +239,7 @@ export async function selectUsageSessions(params: {
     specificKey,
     groupingMode,
     startMs,
+    endMs,
     visibilityFilter,
   } = params;
   await projection.prepareSelection({ metadataOnly: true });
@@ -284,6 +286,7 @@ export async function selectUsageSessions(params: {
           config,
           ...(effectiveAgentId ? { agentId: effectiveAgentId } : {}),
           startMs,
+          endMs,
         })
       : [];
   const discoveredByIdentity = new Map(

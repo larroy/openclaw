@@ -224,6 +224,7 @@ it("keeps same-key overview context reports with their selected agent", async ()
           specificKey: null,
           groupingMode: "instance",
           startMs: 0,
+          endMs: Date.now(),
         })),
       );
     }

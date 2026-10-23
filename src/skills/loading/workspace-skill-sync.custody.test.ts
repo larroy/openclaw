@@ -44,6 +44,8 @@ it("rejects released hosted custody before changing skills after an awaited dire
     const preparation = syncWorkspaceSkills({
       sourceWorkspaceDir: sourceWorkspace,
       targetWorkspaceDir: targetWorkspace,
+      bundledSkillsDir: path.join(sourceWorkspace, ".bundled"),
+      managedSkillsDir: path.join(sourceWorkspace, ".managed"),
       assertCurrent,
     });
     try {

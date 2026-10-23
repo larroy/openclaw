@@ -62,6 +62,7 @@ function buildStatusLastHeartbeatValue(params: {
 function buildStatusMemoryValue(params: {
   memory: MemoryStatusSnapshot | null;
   memoryPlugin: MemoryPluginStatus;
+  memoryUnavailableLabel?: string;
 }) {
   if (!params.memoryPlugin.enabled) {
     const suffix = params.memoryPlugin.reason ? ` (${params.memoryPlugin.reason})` : "";
@@ -69,7 +70,7 @@ function buildStatusMemoryValue(params: {
   }
   if (!params.memory) {
     const slot = params.memoryPlugin.slot ? `plugin ${params.memoryPlugin.slot}` : "plugin";
-    return theme.muted(`enabled (${slot}) · not checked`);
+    return theme.muted(`enabled (${slot}) · ${params.memoryUnavailableLabel ?? "unavailable"}`);
   }
   if ("health" in params.memory) {
     const detail = params.memory.health.message ? ` · ${params.memory.health.message}` : "";
@@ -241,6 +242,7 @@ export function buildStatusCommandOverviewRows(params: {
   const memoryValue = buildStatusMemoryValue({
     memory: params.memory,
     memoryPlugin: params.memoryPlugin,
+    memoryUnavailableLabel: "not checked",
   });
   let pluginCompatibilityValue: string;
   if (params.pluginCompatibility.length === 0) {

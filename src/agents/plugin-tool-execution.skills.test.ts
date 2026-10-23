@@ -5,7 +5,6 @@ import { createTempDirTracker } from "../../test/helpers/temp-dir.js";
 import { createTestPluginApi } from "../plugin-sdk/plugin-test-api.js";
 import type { OpenClawPluginDefinition } from "../plugins/plugin-definition.types.js";
 import type { OpenClawPluginToolFactory } from "../plugins/tool-types.js";
-import * as skillLoader from "../skills/loading/workspace-skill-loader.js";
 import { buildSkillSnapshot } from "../skills/loading/workspace-skill-prompt.js";
 import { readWorkspaceSkillSources } from "../skills/loading/workspace-skill-source-reader.js";
 import { syncWorkspaceSkills } from "../skills/loading/workspace-skill-sync.runtime.js";
@@ -103,15 +102,9 @@ it.each(
       assertCurrent() {},
     });
     const bind = async () => {
-      const load = skillLoader.prepareWorkspaceSkills;
-      using _ = vi
-        .spyOn(skillLoader, "prepareWorkspaceSkills")
-        .mockImplementation((workspaceDir, opts, assertCurrent) =>
-          load(workspaceDir, { ...opts, ...options }, assertCurrent),
-        );
       const snapshot = await buildSkillSnapshot(workspace, options);
       sandbox.skillUsagePaths = await syncWorkspaceSkills({
-        config: options.config,
+        ...options,
         sourceWorkspaceDir: workspace,
         targetWorkspaceDir: sandboxDir,
         skillsSnapshot: snapshot,

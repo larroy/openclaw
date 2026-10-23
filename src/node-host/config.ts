@@ -84,6 +84,7 @@ export async function configureNodeHost(params: {
   gateway: NodeHostGatewayConfig;
   env?: NodeJS.ProcessEnv;
   nowMs?: number;
+  candidateNodeId?: string;
   installedAppsSharing?: boolean;
   commands?: string[];
   allCommands?: boolean;
@@ -93,6 +94,7 @@ export async function configureNodeHost(params: {
   const explicitNodeId = normalizeOptionalString(params.nodeId);
   const explicitDisplayName = normalizeOptionalString(params.displayName);
   const fallbackDisplayName = normalizeOptionalString(params.fallbackDisplayName);
+  const candidateNodeId = params.candidateNodeId?.trim() || crypto.randomUUID();
   const gateway = normalizeGatewayConfig(params.gateway);
   const commands =
     params.commands === undefined ? undefined : normalizeNodeHostCommands(params.commands);
@@ -109,7 +111,7 @@ export async function configureNodeHost(params: {
         explicitNodeId,
         explicitDisplayName,
         fallbackDisplayName,
-        candidateNodeId: crypto.randomUUID(),
+        candidateNodeId,
         gateway,
         installedAppsSharing: params.installedAppsSharing,
         commands,

@@ -53,6 +53,7 @@ export async function discoverAllSessionsForUsage(params: {
   config: OpenClawConfig;
   agentId?: string;
   startMs: number;
+  endMs: number;
 }): Promise<DiscoveredSessionWithAgent[]> {
   return readWithSessionStoreTopology(async () => {
     const requestedAgentId = normalizeOptionalString(params.agentId);
@@ -65,6 +66,7 @@ export async function discoverAllSessionsForUsage(params: {
         const sessions = await discoverAllSessions({
           agentId,
           startMs: params.startMs,
+          endMs: params.endMs,
         });
         return sessions.map((session) => Object.assign({}, session, { agentId }));
       }),
