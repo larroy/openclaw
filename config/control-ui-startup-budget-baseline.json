@@ -1,5 +1,5 @@
 {
-  "startupJsGzipBytes": 315967,
-  "reason": "Retain the stricter startup baseline after merging c64eaf54: matched builds measure 316245 B base and 316279 B candidate across 7 requests, a 34 B delta within the 64 B variance allowance. Ratchet Chat/New caps from 1411650/913005 B with current main relative headroom.",
-  "updatedAt": "2026-10-22"
+  "startupJsGzipBytes": 315881,
+  "reason": "Retain stricter main startup baseline; matched fixed-stamp 2c5 builds measure 316173 to 316216 B (+43 B within variance), Chat1399629/New913062 B at unchanged7/24/18 requests. Ratchet route caps using current relative headroom.",
+  "updatedAt": "2026-10-23"
 }
