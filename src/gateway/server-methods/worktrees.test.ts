@@ -289,6 +289,16 @@ it.each([
   });
 });
 
+it(
+  "fences recovery relocation through real paired requester and workspace authority",
+  { timeout: 90_000 },
+  async ({ signal }) => {
+    const { proveWorkspaceRecoveryAuthority } =
+      await import("./worktrees-recovery.test-support.js");
+    await proveWorkspaceRecoveryAuthority(signal);
+  },
+);
+
 it("requires an explicit state owner and administrator for file recovery", async () => {
   const invoke = requests({});
   const params = {
