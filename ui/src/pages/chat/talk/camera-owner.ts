@@ -1,3 +1,4 @@
+import { createListenerScope } from "../../../lib/reactive/listener.ts";
 import { openRealtimeTalkCamera } from "./input.ts";
 
 type RealtimeTalkCameraOwnerOptions = {
@@ -14,6 +15,7 @@ export class RealtimeTalkCameraOwner {
   stream: MediaStream | null = null;
   video: HTMLVideoElement | null = null;
   private setupController: AbortController | null = null;
+  private trackListeners: ReturnType<typeof createListenerScope> | null = null;
   private readonly handleTrackEnded = () => this.release();
 
   constructor(private readonly options: RealtimeTalkCameraOwnerOptions) {}
@@ -52,9 +54,14 @@ export class RealtimeTalkCameraOwner {
       return;
     }
     this.stream = stream;
+    this.trackListeners?.dispose();
+    const trackListeners = createListenerScope();
+    this.trackListeners = trackListeners;
     stream
       .getVideoTracks()
-      .forEach((track) => track.addEventListener("ended", this.handleTrackEnded, { once: true }));
+      .forEach((track) =>
+        trackListeners.listen(track, "ended", this.handleTrackEnded, { once: true }),
+      );
     const video = document.createElement("video");
     video.autoplay = true;
     video.muted = true;
@@ -108,8 +115,9 @@ export class RealtimeTalkCameraOwner {
     this.setupController?.abort();
     this.setupController = null;
     this.options.onReleased?.();
+    this.trackListeners?.dispose();
+    this.trackListeners = null;
     this.stream?.getVideoTracks().forEach((track) => {
-      track.removeEventListener("ended", this.handleTrackEnded);
       track.stop();
     });
     this.stream = null;

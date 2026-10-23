@@ -1,6 +1,7 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { REALTIME_VOICE_DESCRIBE_VIEW_TOOL_NAME } from "../../../../../src/talk/describe-view-tool.js";
 import { formatUiError } from "../../../lib/format-error.ts";
+import { createListenerScope } from "../../../lib/reactive/listener.ts";
 import { RealtimeTalkMediaStreamMeter } from "./audio.ts";
 import { RealtimeTalkCameraOwner } from "./camera-owner.ts";
 import {
@@ -51,7 +52,7 @@ export class WebRtcSdpRealtimeTalkTransport implements RealtimeTalkTransport {
   private readonly offerExchange = new RealtimeTalkWebRtcOfferExchange();
   private readonly camera: RealtimeTalkCameraOwner;
   private readonly consultAbortControllers = new Set<AbortController>();
-  private readonly controlAbortController = new AbortController();
+  private readonly controlListeners = createListenerScope();
   private starting = false;
   private startupError: Error | null = null;
 
@@ -83,7 +84,6 @@ export class WebRtcSdpRealtimeTalkTransport implements RealtimeTalkTransport {
     this.audio.style.display = "none";
     document.body.append(this.audio);
     // Native WebRTC listeners share the transport lifetime, including late media events.
-    const listenerOptions = { signal: this.controlAbortController.signal };
     const onTrack = (event: RTCTrackEvent) => {
       const stream = event.streams[0];
       if (this.audio && stream) {
@@ -105,13 +105,12 @@ export class WebRtcSdpRealtimeTalkTransport implements RealtimeTalkTransport {
         play(!event.track.muted);
         // iOS can deliver the remote track muted until media starts flowing.
         // Retrying on unmute gives Safari a second chance to attach the live stream.
-        event.track.addEventListener("unmute", () => play(true), {
+        this.controlListeners.listen(event.track, "unmute", () => play(true), {
           once: true,
-          ...listenerOptions,
         });
       }
     };
-    peer.addEventListener("track", onTrack, listenerOptions);
+    this.controlListeners.listen(peer, "track", onTrack);
     const media = this.input.adopt((detail) => this.failConnection(detail));
     if (this.ctx.callbacks.onInputLevel) {
       this.inputMeter = new RealtimeTalkMediaStreamMeter(this.ctx.callbacks.onInputLevel);
@@ -131,20 +130,14 @@ export class WebRtcSdpRealtimeTalkTransport implements RealtimeTalkTransport {
       return this.cancelledStart();
     }
     this.channel = channel;
-    channel.addEventListener(
-      "open",
-      () => {
-        this.ctx.callbacks.onStatus?.("listening");
-        if (!this.closed) {
-          this.ctx.callbacks.onTalkEvent?.({ type: "session.ready" });
-        }
-      },
-      listenerOptions,
-    );
-    channel.addEventListener(
-      "message",
-      (event) => this.handleRealtimeEvent(event.data),
-      listenerOptions,
+    this.controlListeners.listen(channel, "open", () => {
+      this.ctx.callbacks.onStatus?.("listening");
+      if (!this.closed) {
+        this.ctx.callbacks.onTalkEvent?.({ type: "session.ready" });
+      }
+    });
+    this.controlListeners.listen(channel, "message", (event) =>
+      this.handleRealtimeEvent(event.data),
     );
     const onConnectionStateChange = () => {
       if (this.closed) {
@@ -154,7 +147,7 @@ export class WebRtcSdpRealtimeTalkTransport implements RealtimeTalkTransport {
         this.failConnection("Realtime connection closed");
       }
     };
-    peer.addEventListener("connectionstatechange", onConnectionStateChange, listenerOptions);
+    this.controlListeners.listen(peer, "connectionstatechange", onConnectionStateChange);
 
     try {
       const offer = await peer.createOffer();
@@ -221,7 +214,7 @@ export class WebRtcSdpRealtimeTalkTransport implements RealtimeTalkTransport {
 
   private releaseResources(): void {
     this.starting = false;
-    this.controlAbortController.abort();
+    this.controlListeners.dispose();
     this.input.stop();
     this.offerExchange.abort();
     this.channel?.close();
@@ -485,7 +478,7 @@ export class WebRtcSdpRealtimeTalkTransport implements RealtimeTalkTransport {
         ctx: this.ctx,
         callId,
         args,
-        signal: this.controlAbortController.signal,
+        signal: this.controlListeners.signal,
         submit: (toolCallId, result) => this.submitToolResult(toolCallId, result),
       });
       return;

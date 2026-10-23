@@ -1,5 +1,6 @@
 import { asNullableRecord as asRecord } from "@openclaw/normalization-core/record-coerce";
 import { resolveGatewayWebSocketUrl } from "../../lib/gateway-websocket-url.ts";
+import { createListenerScope } from "../../lib/reactive/listener.ts";
 
 export type BrowserScreencastMeta = { url: string; title: string };
 export type BrowserScreencastFrame = {
@@ -20,31 +21,23 @@ type BrowserScreencastOptions = {
 
 export class BrowserScreencastClient {
   private readonly socket: WebSocket;
-  private readonly events = new AbortController();
+  private readonly events = createListenerScope();
   private closed = false;
 
   constructor(private readonly options: BrowserScreencastOptions) {
     this.socket = new WebSocket(resolveGatewayWebSocketUrl(options.wsPath, options.gatewayUrl));
     this.socket.binaryType = "arraybuffer";
-    this.socket.addEventListener("message", (event) => this.receive(event.data), {
-      signal: this.events.signal,
+    this.events.listen(this.socket, "message", (event) => this.receive(event.data));
+    this.events.listen(this.socket, "close", ({ code, reason }) => this.finish(code, reason));
+    this.events.listen(this.socket, "error", () => {
+      this.finish(1006, "");
+      this.socket.close();
     });
-    this.socket.addEventListener("close", ({ code, reason }) => this.finish(code, reason), {
-      signal: this.events.signal,
-    });
-    this.socket.addEventListener(
-      "error",
-      () => {
-        this.finish(1006, "");
-        this.socket.close();
-      },
-      { signal: this.events.signal },
-    );
   }
 
   close(): void {
     this.closed = true;
-    this.events.abort();
+    this.events.dispose();
     this.socket.close();
   }
 
@@ -53,7 +46,7 @@ export class BrowserScreencastClient {
       return;
     }
     this.closed = true;
-    this.events.abort();
+    this.events.dispose();
     this.options.onClose({ code, reason });
   }
 

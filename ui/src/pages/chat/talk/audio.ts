@@ -1,4 +1,5 @@
 import { base64ToBytes } from "../../../lib/bytes-base64.ts";
+import { createListenerScope } from "../../../lib/reactive/listener.ts";
 
 export function floatToPcm16(samples: Float32Array): Uint8Array {
   const bytes = new Uint8Array(samples.length * 2);
@@ -188,7 +189,7 @@ export class RealtimeTalkPcmOutputQueue {
   private sampleRateHz = 0;
   private playhead = 0;
   private readonly sources = new Set<AudioBufferSourceNode>();
-  private sourceListeners: AbortController | null = null;
+  private sourceListeners: ReturnType<typeof createListenerScope> | null = null;
 
   open(sampleRateHz: number): void {
     this.context = new AudioContext({ sampleRate: sampleRateHz });
@@ -254,10 +255,9 @@ export class RealtimeTalkPcmOutputQueue {
     buffer.getChannelData(0).set(samples);
     const source = outputContext.createBufferSource();
     this.sources.add(source);
-    this.sourceListeners ??= new AbortController();
-    source.addEventListener("ended", () => this.sources.delete(source), {
+    this.sourceListeners ??= createListenerScope();
+    this.sourceListeners.listen(source, "ended", () => this.sources.delete(source), {
       once: true,
-      signal: this.sourceListeners.signal,
     });
     source.buffer = buffer;
     source.connect(outputContext.destination);
@@ -270,7 +270,7 @@ export class RealtimeTalkPcmOutputQueue {
     // Release ownership first so synchronous or late `ended` events from stopped
     // sources cannot affect audio queued by a replacement playback turn.
     const sources = [...this.sources];
-    this.sourceListeners?.abort();
+    this.sourceListeners?.dispose();
     this.sourceListeners = null;
     this.sources.clear();
     this.playhead = this.context?.currentTime ?? 0;

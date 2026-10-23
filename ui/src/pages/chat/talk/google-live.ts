@@ -1,5 +1,6 @@
 import { bytesToBase64 } from "../../../lib/bytes-base64.ts";
 import { formatUiError } from "../../../lib/format-error.ts";
+import { createListenerScope } from "../../../lib/reactive/listener.ts";
 import {
   floatToPcm16,
   RealtimeTalkMediaStreamMeter,
@@ -60,7 +61,7 @@ export class GoogleLiveRealtimeTalkTransport implements RealtimeTalkTransport {
   private readonly completeInputTranscripts: boolean;
   private readonly extendedThinkingModel: boolean;
   private ws: WebSocket | null = null;
-  private readonly socketListeners = new AbortController();
+  private readonly socketListeners = createListenerScope();
   private setupTimeout: ReturnType<typeof globalThis.setTimeout> | null = null;
   private readonly input = this.ctx.input;
   private inputContext: AudioContext | null = null;
@@ -149,38 +150,21 @@ export class GoogleLiveRealtimeTalkTransport implements RealtimeTalkTransport {
         `Realtime connection timed out after ${GOOGLE_LIVE_SETUP_TIMEOUT_MS}ms`,
       );
     }, GOOGLE_LIVE_SETUP_TIMEOUT_MS);
-    const listenerOptions = { signal: this.socketListeners.signal };
-    ws.addEventListener(
-      "open",
-      () => {
-        if (this.closed || this.ws !== ws) {
-          return;
-        }
-        this.send(this.session.initialMessage ?? { setup: {} });
-      },
-      listenerOptions,
-    );
-    ws.addEventListener(
-      "message",
-      (event) => {
-        this.handleMessage(ws, event.data);
-      },
-      listenerOptions,
-    );
-    ws.addEventListener(
-      "close",
-      () => {
-        this.failConnection(ws, "Realtime connection closed");
-      },
-      listenerOptions,
-    );
-    ws.addEventListener(
-      "error",
-      () => {
-        this.failConnection(ws, "Realtime connection failed");
-      },
-      listenerOptions,
-    );
+    this.socketListeners.listen(ws, "open", () => {
+      if (this.closed || this.ws !== ws) {
+        return;
+      }
+      this.send(this.session.initialMessage ?? { setup: {} });
+    });
+    this.socketListeners.listen(ws, "message", (event) => {
+      this.handleMessage(ws, event.data);
+    });
+    this.socketListeners.listen(ws, "close", () => {
+      this.failConnection(ws, "Realtime connection closed");
+    });
+    this.socketListeners.listen(ws, "error", () => {
+      this.failConnection(ws, "Realtime connection failed");
+    });
     const result = await this.startup.promise;
     return this.closed ? "cancelled" : result;
   }
@@ -237,7 +221,7 @@ export class GoogleLiveRealtimeTalkTransport implements RealtimeTalkTransport {
   }
 
   private releaseResources(): void {
-    this.socketListeners.abort();
+    this.socketListeners.dispose();
     this.clearSetupTimeout();
     this.pendingTranscripts.user = { text: "", byteCount: 0 };
     this.pendingTranscripts.assistant = { text: "", byteCount: 0 };

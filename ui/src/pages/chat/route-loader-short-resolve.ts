@@ -7,6 +7,7 @@ import { createDeferredCore } from "../../../../src/shared/deferred.js";
 import type { GatewaySessionRow } from "../../api/types.ts";
 import type { SessionPathTarget } from "../../app-session-route-paths.ts";
 import { waitForGatewayClient } from "../../app/gateway-readiness.ts";
+import { createListenerScope } from "../../lib/reactive/listener.ts";
 import { normalizeAgentId, parseAgentSessionKey } from "../../lib/sessions/session-key.ts";
 import type { SessionRouteContext as ApplicationContext } from "./route-loader-context.ts";
 import { sessionKeyUuid } from "./route-loader-short-cache.ts";
@@ -74,11 +75,11 @@ export async function resolveShortSessionReference(
   let canonicalizationPending = false;
   let stopEvents = () => {};
   let stopGateway = () => {};
+  const listeners = createListenerScope();
   const stop = () => {
     stopEvents();
     stopGateway();
-    signal.removeEventListener("abort", abort);
-    lifecycleSignal?.removeEventListener("abort", abort);
+    listeners.dispose();
   };
   const retire = () => {
     retired = true;
@@ -122,8 +123,10 @@ export async function resolveShortSessionReference(
       retire();
     }
   });
-  signal.addEventListener("abort", abort, { once: true });
-  lifecycleSignal?.addEventListener("abort", abort, { once: true });
+  listeners.listen(signal, "abort", abort, { once: true });
+  if (lifecycleSignal) {
+    listeners.listen(lifecycleSignal, "abort", abort, { once: true });
+  }
   try {
     signal.throwIfAborted();
     lifecycleSignal?.throwIfAborted();

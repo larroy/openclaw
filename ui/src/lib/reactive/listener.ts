@@ -12,7 +12,19 @@ type NativeEventMap<T> = (T extends Window | typeof globalThis
             ? ServiceWorkerContainerEventMap
             : T extends MessagePort
               ? MessagePortEventMap
-              : Record<string, Event>) &
+              : T extends WebSocket
+                ? WebSocketEventMap
+                : T extends Worker
+                  ? WorkerEventMap
+                  : T extends RTCDataChannel
+                    ? RTCDataChannelEventMap
+                    : T extends RTCPeerConnection
+                      ? RTCPeerConnectionEventMap
+                      : T extends MediaStreamTrack
+                        ? MediaStreamTrackEventMap
+                        : T extends FileReader
+                          ? FileReaderEventMap
+                          : Record<string, Event>) &
   Record<string, Event>;
 
 export function listen<T extends EventTarget, K extends string>(
@@ -25,4 +37,24 @@ export function listen<T extends EventTarget, K extends string>(
   const listener = handler as EventListenerOrEventListenerObject;
   target.addEventListener(type, listener, options);
   return () => target.removeEventListener(type, listener, options);
+}
+
+/** One external operation owns these listeners and retires them together. */
+export function createListenerScope() {
+  const controller = new AbortController();
+  return {
+    signal: controller.signal,
+    listen<T extends EventTarget, K extends string>(
+      target: T,
+      type: K,
+      handler: ((event: NativeEventMap<T>[K]) => void) | EventListenerObject,
+      options?: boolean | Omit<AddEventListenerOptions, "signal">,
+    ) {
+      listen(target, type, handler, {
+        ...(typeof options === "boolean" ? { capture: options } : options),
+        signal: controller.signal,
+      });
+    },
+    dispose: () => controller.abort(),
+  };
 }
