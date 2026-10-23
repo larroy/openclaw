@@ -74,7 +74,7 @@ export async function withUpdateProgressSettlement(
       throw cause;
     }
     failure = { cause };
-    const { result } = createPostUpdateFailureResult(params, cause);
+    const { result } = createPostUpdateExceptionResult(params, cause);
     settledParams = {
       ...params,
       result:
@@ -229,13 +229,39 @@ export async function publishSettledUpdateCommandResult(
   return prepared(onTerminalRecord);
 }
 
-export function createPostUpdateFailureResult(
+export function createPostUpdateExceptionResult(
   params: Pick<FinishUpdateParams, "result" | "root" | "startedAt">,
   error: unknown,
+  activationVerified = false,
 ): { result: UpdateRunResult; message: string } {
   const message = formatErrorMessage(error);
   const failureFacts = collectUpdateDoctorFailureFacts(error);
   const refusal = classifyDoctorMaintenanceRefusal(error);
+  if (
+    activationVerified &&
+    refusal.kind !== "data-at-risk" &&
+    !(params.result.recovery?.serviceRestartSafe === false && params.result.recovery.dataAtRisk)
+  ) {
+    // A verified target stays successful when later optional work fails.
+    const warning = `Gateway activation verified; post-update maintenance needs attention: ${message}`;
+    return {
+      message: warning,
+      result: {
+        ...params.result,
+        steps: [
+          ...params.result.steps,
+          {
+            name: "post-update maintenance",
+            command: "openclaw update",
+            cwd: params.result.root ?? params.root,
+            durationMs: Math.max(0, Date.now() - params.startedAt),
+            exitCode: 0,
+            advisory: { kind: "recoverable-maintenance", message: warning },
+          },
+        ],
+      },
+    };
+  }
   const version = params.result.after?.version?.trim();
   return {
     message,

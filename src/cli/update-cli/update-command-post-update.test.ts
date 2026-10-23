@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import * as updateCheck from "../../infra/update-check.js";
+import { DoctorMaintenanceRefusalError } from "../../infra/update-doctor-result.js";
 import { createRetainedUpdateRecovery } from "../../infra/update-retained-recovery.test-support.js";
 import {
   createUpdateRun,
@@ -345,6 +346,53 @@ describe("successful update finalization ordering", () => {
     expectBefore(mocks.restartService, mocks.checkCompletionStatus);
   });
 
+  it.each(["exception", "reported-failure", "data-at-risk"] as const)(
+    "preserves verified activation after a later error unless data is at risk (%s)",
+    async (outcome) => {
+      const env = { OPENCLAW_STATE_DIR: tempDirs.make("update-verified-target-") };
+      const run = createUpdateRun({ trigger: "cli" }, { env });
+      const rollback = vi.spyOn(rollbackModule, "rollbackFailedUpdate");
+      mocks.restartService.mockImplementationOnce(async ({ onVerified }) => {
+        onVerified?.(Date.now());
+        if (outcome === "data-at-risk") {
+          throw new DoctorMaintenanceRefusalError("Incomplete migration", {
+            kind: "data-at-risk",
+            reason: "incomplete-migration",
+          });
+        }
+        if (outcome === "reported-failure") {
+          return "restart-health-failed";
+        }
+        throw new Error("post-activation receipt unavailable");
+      });
+      const finishing = finishSuccessfulPackageSwitch({
+        run: { runId: run.runId, env },
+        restartEnvironment: process.env,
+      });
+      if (outcome === "data-at-risk") {
+        await expect(finishing).rejects.toMatchObject({
+          result: { status: "error", recovery: { dataAtRisk: "incomplete-migration" } },
+        });
+        expect(getUpdateRun(run.runId, { env })?.status).toBe("failed");
+      } else {
+        await expect(finishing).resolves.toBeUndefined();
+        expect(rollback).not.toHaveBeenCalled();
+        expect(getUpdateRun(run.runId, { env })?.status).toBe("succeeded");
+        const result = mocks.printResult.mock.lastCall?.[0];
+        expect(result.status).toBe("ok");
+        expect(
+          result.steps.find((step: { name: string }) => step.name === "post-update maintenance")
+            ?.advisory,
+        ).toMatchObject({
+          kind: "recoverable-maintenance",
+          message: expect.stringContaining(
+            outcome === "exception" ? "post-activation receipt unavailable" : "restart-unhealthy",
+          ),
+        });
+      }
+    },
+  );
+
   it("restarts when completion cache refresh reports failure", async () => {
     const root = tempDirs.make("openclaw-completion-failure-");
     await fs.writeFile(
@@ -414,12 +462,22 @@ describe("successful update finalization ordering", () => {
   });
 
   it.each([
-    { name: "retires the wrapper before persisting and printing success", denied: false },
+    {
+      name: "retires the wrapper before persisting and printing success",
+      denied: false,
+      verified: false,
+    },
     {
       name: "recovers and retains the package before reporting failed wrapper retirement",
       denied: true,
+      verified: false,
     },
-  ])("$name", async ({ denied }) => {
+    {
+      name: "keeps a verified target successful when wrapper retirement fails",
+      denied: true,
+      verified: true,
+    },
+  ])("$name", async ({ denied, verified }) => {
     const home = tempDirs.make("openclaw-finalize-wrapper-");
     const previousRoot = path.join(home, "old-root");
     const wrapper = path.join(home, ".local", "bin", "openclaw");
@@ -448,11 +506,24 @@ describe("successful update finalization ordering", () => {
     const complete = vi.fn<NonNullable<FinishUpdateParams["packageTransaction"]>["complete"]>(
       async ({ activationVerified }) => (activationVerified ? undefined : retained),
     );
+    if (verified) {
+      mocks.restartService.mockImplementationOnce(async ({ onVerified }) => {
+        onVerified?.(Date.now());
+        return "ok";
+      });
+    }
     const finishing = finishSuccessfulPackageSwitch(
-      { previousRoot, packageRoot: path.join(home, "package") },
-      { packageTransaction: { backupRoot: previousRoot, rollback: vi.fn(), complete } },
+      {
+        previousRoot,
+        packageRoot: path.join(home, "package"),
+        ...(verified ? { restartEnvironment: process.env } : {}),
+      },
+      {
+        installKindChanged: true,
+        packageTransaction: { backupRoot: previousRoot, rollback: vi.fn(), complete },
+      },
     );
-    if (denied) {
+    if (denied && !verified) {
       await expectUpdateFailure(finishing, "wrapper-retirement-failed", {
         detail: expect.stringContaining("unlink denied"),
       });
@@ -473,6 +544,21 @@ describe("successful update finalization ordering", () => {
       );
     } else {
       await finishing;
+      expect(rollback).not.toHaveBeenCalled();
+      if (verified) {
+        expect(mocks.printResult.mock.lastCall?.[0]).toMatchObject({
+          status: "ok",
+          steps: expect.arrayContaining([
+            expect.objectContaining({
+              advisory: {
+                kind: "recoverable-maintenance",
+                message: expect.stringContaining("unlink denied"),
+              },
+            }),
+          ]),
+        });
+        expect(mocks.markSentinelFailure).not.toHaveBeenCalled();
+      }
       expect(mocks.writeSentinel).toHaveBeenCalledTimes(2);
       expectBefore(unlink, mocks.writeSentinel, 0, 1);
       expectBefore(mocks.writeSentinel, mocks.printResult, 1);
