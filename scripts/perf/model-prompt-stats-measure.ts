@@ -38,15 +38,19 @@ const records = new WeakSet<object>();
 // oxlint-disable-next-line typescript/unbound-method -- The probe forwards the original receiver.
 const originalSet = Map.prototype.set;
 let newRecords = 0;
-const set = mock.method(Map.prototype, "set", function (key, value) {
-  if (typeof value === "object" && value !== null && "text" in value && "chars" in value) {
-    if (!records.has(value)) {
-      newRecords++;
-      records.add(value);
+const set = mock.method(
+  Map.prototype,
+  "set",
+  function (this: Map<unknown, unknown>, key: unknown, value: unknown) {
+    if (typeof value === "object" && value !== null && "text" in value && "chars" in value) {
+      if (!records.has(value)) {
+        newRecords++;
+        records.add(value);
+      }
     }
-  }
-  return originalSet.call(this, key, value);
-});
+    return originalSet.call(this, key, value);
+  },
+);
 let warmRecords: number;
 try {
   assert.deepEqual(measure(context), expected);
