@@ -7,7 +7,6 @@ import { isPluginCommandCronJob } from "../plugin-command-schedule.js";
 import { normalizeCronRunDiagnostics, summarizeCronRunDiagnostics } from "../run-diagnostics.js";
 import { resolveCronRunErrorReason } from "../run-error-reason.js";
 import { cronSchedulingInputsEqual } from "../schedule-identity.js";
-import { computeNextRunAtMs } from "../schedule.js";
 import type { CronRunFinalizationOutcome } from "../store/runtime-worker.types.js";
 import type { CronJob, CronRunStatus, CronTriggerEvalOutcome } from "../types.js";
 import {
@@ -25,6 +24,7 @@ import {
   DEFAULT_ERROR_BACKOFF_SCHEDULE_MS,
   errorBackoffMs,
   isJobEnabled,
+  normalizeConsecutiveErrors,
   recordScheduleComputeError,
   resolveNextRunAtMsOrDisable,
   resolveCronRestartRetryAtMs,
@@ -115,6 +115,7 @@ export function applyJobResult(
     pacedNextRunAtMs: job.state.pacedNextRunAtMs,
     forcePreservedNextRunAtMs: job.state.forcePreservedNextRunAtMs,
   };
+  const previousRunInterruptedByRestart = job.state.lastError === STARTUP_INTERRUPTED_ERROR;
   job.state.queuedAtMs = undefined;
   job.state.runningAtMs = undefined;
   job.state.runningReceiptId = undefined;
@@ -177,12 +178,10 @@ export function applyJobResult(
     result.status === "error" &&
     !result.interruptedByRestart &&
     result.errorClassification?.kind !== "aborted";
-  const previousConsecutiveErrors = job.state.consecutiveErrors ?? 0;
+  const previousConsecutiveErrors = normalizeConsecutiveErrors(job.state.consecutiveErrors);
   const computeNaturalNext = (restartInterval: boolean) => {
     try {
-      return restartInterval && job.schedule.kind === "every"
-        ? computeNextRunAtMs(job.schedule, result.endedAt)
-        : computeJobNextRunAtMs(job, result.endedAt);
+      return computeJobNextRunAtMs(job, result.endedAt, { preserveEveryAnchor: restartInterval });
     } catch (err) {
       recordScheduleComputeError({
         state,
@@ -560,7 +559,9 @@ export function applyJobResult(
       );
       job.state.pacedNextRunAtMs = nextRunAtMs;
     } else if (isJobEnabled(job)) {
-      const naturalNext = computeNaturalNext(previousConsecutiveErrors > 0);
+      const naturalNext = computeNaturalNext(
+        previousConsecutiveErrors > 0 || previousRunInterruptedByRestart,
+      );
       if (job.schedule.kind === "cron") {
         // Safety net: ensure the next fire is at least MIN_REFIRE_GAP_MS
         // after the current run ended.  Prevents spin-loops when the
