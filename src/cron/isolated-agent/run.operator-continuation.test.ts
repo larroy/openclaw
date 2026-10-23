@@ -70,6 +70,7 @@ import { runOpenClawStateWriteTransaction } from "../../state/openclaw-state-db.
 import { setCanonicalUserProfileRole } from "../../state/user-profile-writes.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
 import { createGatewaySchedulerClock } from "../../test-utils/gateway-scheduler-clock.js";
+import type { CronEvent } from "../service.js";
 import { resolveCronRequesterExecutionRevision } from "../service/jobs-tool-policy.js";
 import { onTimer } from "../service/timer.test-support.js";
 import { saveCronStore } from "../store.js";
@@ -139,6 +140,9 @@ afterEach(() => {
 // Exercise custody transfer through durable reload, scheduled admission and the real action owner.
 it.each([
   "operator",
+  "self removal",
+  "self removal then role revoked during merge",
+  "self removal then session replaced during merge",
   "paused force run",
   "restart",
   "restart with prior operator source",
@@ -162,6 +166,7 @@ it.each([
   const captureRace = scenario === "owner capture races manager payload";
   const queuedEdit = ownerEdit || managerRename || captureRace;
   const recurring = scenario === "recurring trigger reload";
+  const selfRemoving = scenario.startsWith("self removal");
   const config = await prepareAuthorityConfig({
     tools: { allow: [AUTOMATIONS_TOOL_NAME, "github_publish"] },
     ...(recurring ? { cron: { triggers: { enabled: true } } } : {}),
@@ -302,9 +307,10 @@ it.each([
                     payload: {
                       kind: "agentTurn",
                       message: "Inspect and land the reviewed PR",
-                      toolsAllow: ownerEdit
-                        ? ["github_publish", AUTOMATIONS_TOOL_NAME]
-                        : ["github_publish"],
+                      toolsAllow:
+                        ownerEdit || selfRemoving
+                          ? ["github_publish", AUTOMATIONS_TOOL_NAME]
+                          : ["github_publish"],
                     },
                     delivery: { mode: "none" },
                     deleteAfterRun: false,
@@ -439,6 +445,9 @@ it.each([
     .spyOn(publicationTransport, "runPublicationCommand")
     .mockImplementation(async (argv, options) => {
       options?.beforeRun?.();
+      if (selfRemoving) {
+        expect(context.cron.getJob(job.id)).toBeUndefined();
+      }
       if (argv.includes("PUT") && argv.includes("repos/fixture/repository/pulls/7/merge")) {
         writes.push(JSON.parse(String(options?.input)));
         merged = true;
@@ -446,9 +455,20 @@ it.each([
         expect(argv).toContain("GET");
         expect(argv).toContain("repos/fixture/repository/pulls/7");
         reads++;
-        if (scenario === "role revoked during merge" && reads === 2) {
-          // Revoke during merge preflight, after inspect but before the final write.
-          await setCanonicalUserProfileRole(profile.id, "blocked");
+        if (reads === 2) {
+          // Commit authority loss during awaited preflight, before the final write.
+          if (
+            scenario === "role revoked during merge" ||
+            scenario === "self removal then role revoked during merge"
+          ) {
+            await setCanonicalUserProfileRole(profile.id, "blocked");
+          } else if (scenario === "self removal then session replaced during merge") {
+            await accessor.replaceSessionEntry(recovery.target, {
+              ...expectDefined(accessor.loadSessionEntry(recovery.target), "active session"),
+              sessionId: "replacement-session",
+              lifecycleRevision: "replacement",
+            });
+          }
         }
       }
       return publicationCommandResult(merged);
@@ -575,8 +595,8 @@ it.each([
             abortSignal: params.abortSignal,
             runtimeToolAllowlist: params.toolsAllow,
             scheduledToolPolicy: params.scheduledToolPolicy,
-            trigger: "cron",
-            jobId: job.id,
+            trigger: params.trigger,
+            jobId: params.jobId,
           }),
           params.toolsAllow,
           { toolMeta: getPluginToolMeta },
@@ -596,6 +616,15 @@ it.each([
           ).toBe(nextCheckDefinition);
         }
         admittedOperator = readAdmittedRunOperatorAuthority(admitted) !== undefined;
+        if (selfRemoving) {
+          const automations = expectDefined(
+            tools.find((tool) => tool.name === AUTOMATIONS_TOOL_NAME),
+            "scheduled self-cleanup tool",
+          );
+          await automations.execute("self-cleanup", { action: "remove", jobId: job.id });
+          expect(params.abortSignal?.aborted).toBe(false);
+          expect(context.cron.getJob(job.id)).toBeUndefined();
+        }
         const publish = tools.find((tool) => tool.name === "github_publish");
         offered = publish?.parameters;
         if (publish && JSON.stringify(offered).includes('"inspect"')) {
@@ -611,7 +640,10 @@ it.each([
             );
           } catch (error) {
             rejected = String(error);
-            if (scenario === "role revoked during merge") {
+            if (
+              scenario === "role revoked during merge" ||
+              scenario === "self removal then role revoked during merge"
+            ) {
               expect(params.abortSignal?.aborted).toBe(true);
             }
           }
@@ -621,6 +653,7 @@ it.each([
     );
   });
   const finished = createDeferredCore();
+  let finishedEvent: CronEvent | undefined;
   const { cron: execution, state: schedulerState } = createOperatorContinuationService({
     config,
     stateDir,
@@ -629,6 +662,7 @@ it.each([
     runIsolated: runCronIsolatedAgentTurn,
     onEvent: (event) => {
       if (event.action === "finished" && event.jobId === job.id) {
+        finishedEvent = event;
         finished.resolve();
       }
     },
@@ -752,6 +786,33 @@ it.each([
     }
     await finished.promise;
     await execution.waitForIdle();
+    if (selfRemoving) {
+      expect(execution.getJob(job.id)).toBeUndefined();
+      expect(entered).toBe(1);
+      if (scenario !== "self removal") {
+        expect(finishedEvent).toMatchObject({ status: "error" });
+        expect(reads).toBe(2);
+        expect(results).toHaveLength(1);
+        expect(rejected).toMatch(/abort|authority|source|session/i);
+        expect(writes).toEqual([]);
+        expect(merged).toBe(false);
+        return;
+      }
+      expect(finishedEvent, finishedEvent?.error).toMatchObject({
+        status: "ok",
+        completionStatus: "succeeded",
+        summary: "Continuation complete",
+      });
+      expect(rejected).toBeUndefined();
+      expect(merged).toBe(true);
+      expect(writes).toEqual([{ sha: "a".repeat(40), merge_method: "merge" }]);
+      const completed = expectDefined(
+        accessor.loadSessionEntry(recovery.target),
+        "completed session",
+      );
+      expect(completed.status).not.toBe("killed");
+      return;
+    }
     const state = expectDefined(execution.getJob(job.id), "finished scheduled job").state;
     if (managerRename || captureRace) {
       expect(admittedOperator).toBe(false);
