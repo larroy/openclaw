@@ -2456,7 +2456,16 @@ function readPromotion(profilePath: string, operationCount: number) {
   return { gcTrace, promotedBytesPerOperation: gcTrace.promotedBytes / operationCount };
 }
 function readAuthorityAllocation(profilePath: string, operationCount: number) {
-  const profile: HeapProfiler.SamplingHeapProfile = JSON.parse(readFileSync(profilePath, "utf8"));
+  // Node's inspector declarations omit the CDP sample IDs emitted by heap sampling.
+  type AllocationNode = {
+    id: number;
+    callFrame: HeapProfiler.SamplingHeapProfileNode["callFrame"];
+    selfSize: number;
+    children: AllocationNode[];
+  };
+  const profile: { head: AllocationNode; samples: { nodeId: number }[] } = JSON.parse(
+    readFileSync(profilePath, "utf8"),
+  );
   const owners = new Set([
     "session-source-authority",
     "admitted-run-context",
@@ -2468,7 +2477,7 @@ function readAuthorityAllocation(profilePath: string, operationCount: number) {
   for (const sample of profile.samples) {
     sampleCounts.set(sample.nodeId, (sampleCounts.get(sample.nodeId) ?? 0) + 1);
   }
-  const visit = (node: HeapProfiler.SamplingHeapProfileNode, parents: string[]) => {
+  const visit = (node: AllocationNode, parents: string[]) => {
     const owner = node.callFrame.url.match(/\/([^/]+)\.(?:ts|js)$/)?.[1] ?? "";
     const stack = [...parents, owner].slice(-8);
     const family = stack.find((name) => owners.has(name));
@@ -2850,7 +2859,7 @@ async function runRound(
     const turns = Promise.all(
       roundKeys.map(async (sessionKey, index) => {
         const turnStarted = performance.now();
-        let runId = randomUUID();
+        let runId: string = randomUUID();
         current.turns.set(index + 1, { runId, startedAt: turnStarted });
         const image = retentionScenario
           ? promptContent.update(Buffer.alloc(256 * 128 * 4))
